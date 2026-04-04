@@ -1,0 +1,445 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div class="container" style="padding: 48px 24px;">
+    <div style="max-width: 800px; margin: 0 auto;">
+        <h1 style="font-size: 2rem; font-weight: 700; margin-bottom: 8px;">Publish a Skill</h1>
+        <p style="color: var(--text-secondary); margin-bottom: 24px;">Upload your skill files directly or use the API.</p>
+
+        {{if not .CurrentUser}}
+        <div class="card" style="padding: 32px; text-align: center;">
+            <div style="font-size: 1.5rem; margin-bottom: 12px;">&#128274;</div>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">You need to be logged in to publish skills.</p>
+            <a href="/login?redirect=/publish" class="btn btn-primary" style="padding: 12px 32px;">Login to Publish</a>
+        </div>
+        {{else}}
+
+        <!-- Tab switcher -->
+        <div style="display: flex; gap: 0; margin-bottom: 24px; border-bottom: 1px solid var(--card-border);">
+            <button class="tab-btn active" onclick="switchTab('upload')" id="tab-upload"
+                style="padding: 10px 24px; background: none; border: none; border-bottom: 2px solid var(--accent); color: var(--text); font-size: 0.9rem; font-weight: 600; cursor: pointer;">
+                Upload
+            </button>
+            <button class="tab-btn" onclick="switchTab('cli')" id="tab-cli"
+                style="padding: 10px 24px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; cursor: pointer;">
+                CLI / API
+            </button>
+        </div>
+
+        <!-- Upload Tab -->
+        <div id="panel-upload">
+            <form id="publishForm" style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="card" style="padding: 24px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Slug *</label>
+                            <input type="text" id="f-slug" required placeholder="my-awesome-skill" pattern="[a-z0-9][a-z0-9\-]*[a-z0-9]"
+                                style="width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px 14px; font-size: 0.9rem; color: var(--text); outline: none;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Lowercase, hyphens only. e.g. code-review</div>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Version *</label>
+                            <input type="text" id="f-version" required placeholder="1.0.0" pattern="\d+\.\d+\.\d+"
+                                style="width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px 14px; font-size: 0.9rem; color: var(--text); outline: none;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Semver format: 1.0.0</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px;">
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Display Name</label>
+                        <input type="text" id="f-displayName" placeholder="My Awesome Skill"
+                            style="width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px 14px; font-size: 0.9rem; color: var(--text); outline: none;">
+                    </div>
+
+                    <div style="margin-top: 16px;">
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Summary</label>
+                        <textarea id="f-summary" rows="2" placeholder="A brief description of what this skill does..."
+                            style="width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px 14px; font-size: 0.9rem; color: var(--text); outline: none; resize: vertical; font-family: inherit;"></textarea>
+                    </div>
+
+                    <div style="margin-top: 16px;">
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Tags</label>
+                        <input type="text" id="f-tags" placeholder="go, automation, tools"
+                            style="width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px 14px; font-size: 0.9rem; color: var(--text); outline: none;">
+                        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Comma-separated</div>
+                    </div>
+                </div>
+
+                <div class="card" style="padding: 24px;">
+                    <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Skill Files *</label>
+                    <div id="dropZone" style="border: 2px dashed var(--card-border); border-radius: 8px; padding: 40px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s;">
+                        <div style="font-size: 2rem; margin-bottom: 8px;">&#128193;</div>
+                        <div style="color: var(--text-secondary); font-size: 0.9rem;">
+                            Drop a folder or files here
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 6px;">
+                            Must include SKILL.md. Supports folders and multiple files.
+                        </div>
+                        <div style="margin-top: 14px; display: flex; gap: 10px; justify-content: center;">
+                            <button type="button" class="btn btn-primary" style="padding: 8px 20px; font-size: 0.85rem;" onclick="document.getElementById('f-folder').click()">Select Folder</button>
+                            <button type="button" class="btn btn-secondary" style="padding: 8px 20px; font-size: 0.85rem;" onclick="document.getElementById('f-files').click()">Select Files</button>
+                        </div>
+                    </div>
+                    <input type="file" id="f-files" multiple style="display: none;" onchange="handleFileInput(this.files)">
+                    <input type="file" id="f-folder" webkitdirectory style="display: none;" onchange="handleFileInput(this.files)">
+
+                    <div id="fileList" style="margin-top: 12px;"></div>
+                </div>
+
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button type="submit" class="btn btn-primary" id="publishBtn" style="padding: 12px 32px; font-size: 1rem;">
+                        Publish Skill
+                    </button>
+                    <span id="publishStatus" style="font-size: 0.9rem;"></span>
+                </div>
+            </form>
+
+            <div id="publishResult" style="margin-top: 20px; display: none;">
+                <div class="card" style="border-color: var(--accent); padding: 20px;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                        <span style="color: var(--accent); font-size: 1.2rem;">&#10003;</span>
+                        <strong>Published successfully!</strong>
+                    </div>
+                    <div id="resultDetail" style="font-size: 0.9rem; color: var(--text-secondary);"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CLI Tab -->
+        <div id="panel-cli" style="display: none;">
+            <div class="card" style="margin-bottom: 24px;">
+                <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 12px;">Publish via CLI</h2>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <span class="prefix">$ </span><span class="cmd">skillhub login
+skillhub publish ./my-skill --slug my-skill --version 1.0.0</span>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 24px;">
+                <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 12px;">Publish via cURL</h2>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                    <span class="prefix">$ </span><span class="cmd">curl -X POST {{.BaseURL}}/api/v1/skills \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "slug=my-skill" \
+  -F "version=1.0.0" \
+  -F "displayName=My Skill" \
+  -F "summary=A brief description" \
+  -F "tags=python,automation" \
+  -F "files=@SKILL.md" \
+  -F "files=@prompt.md"</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 12px;">API Reference</h2>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--card-border);">
+                                <th style="padding: 8px 12px; text-align: left; color: var(--text-muted);">Endpoint</th>
+                                <th style="padding: 8px 12px; text-align: left; color: var(--text-muted);">Method</th>
+                                <th style="padding: 8px 12px; text-align: left; color: var(--text-muted);">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="border-bottom: 1px solid var(--card-border);">
+                                <td style="padding: 8px 12px;"><code style="color: var(--accent);">POST /api/v1/skills</code></td>
+                                <td style="padding: 8px 12px;">Multipart</td>
+                                <td style="padding: 8px 12px; color: var(--text-secondary);">Publish skill (slug, version, files required)</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--card-border);">
+                                <td style="padding: 8px 12px;"><code style="color: var(--accent);">GET /api/v1/skills</code></td>
+                                <td style="padding: 8px 12px;">JSON</td>
+                                <td style="padding: 8px 12px; color: var(--text-secondary);">List skills (limit, cursor, sort)</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--card-border);">
+                                <td style="padding: 8px 12px;"><code style="color: var(--accent);">GET /api/v1/skills/:slug</code></td>
+                                <td style="padding: 8px 12px;">JSON</td>
+                                <td style="padding: 8px 12px; color: var(--text-secondary);">Get skill details</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--card-border);">
+                                <td style="padding: 8px 12px;"><code style="color: var(--accent);">GET /api/v1/download</code></td>
+                                <td style="padding: 8px 12px;">ZIP</td>
+                                <td style="padding: 8px 12px; color: var(--text-secondary);">Download skill (slug, version)</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--card-border);">
+                                <td style="padding: 8px 12px;"><code style="color: var(--accent);">GET /api/v1/search</code></td>
+                                <td style="padding: 8px 12px;">JSON</td>
+                                <td style="padding: 8px 12px; color: var(--text-secondary);">Search skills (q)</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 12px;"><code style="color: var(--accent);">GET /.well-known/clawhub.json</code></td>
+                                <td style="padding: 8px 12px;">JSON</td>
+                                <td style="padding: 8px 12px; color: var(--text-secondary);">Registry discovery</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {{end}}
+    </div>
+</div>
+
+{{if .CurrentUser}}
+<script>
+function switchTab(tab) {
+    document.getElementById('panel-upload').style.display = tab === 'upload' ? 'block' : 'none';
+    document.getElementById('panel-cli').style.display = tab === 'cli' ? 'block' : 'none';
+    var tabUpload = document.getElementById('tab-upload');
+    var tabCli = document.getElementById('tab-cli');
+    if (tab === 'upload') {
+        tabUpload.style.borderBottomColor = 'var(--accent)';
+        tabUpload.style.color = 'var(--text)';
+        tabCli.style.borderBottomColor = 'transparent';
+        tabCli.style.color = 'var(--text-muted)';
+    } else {
+        tabCli.style.borderBottomColor = 'var(--accent)';
+        tabCli.style.color = 'var(--text)';
+        tabUpload.style.borderBottomColor = 'transparent';
+        tabUpload.style.color = 'var(--text-muted)';
+    }
+}
+
+// Each entry: { file: File, path: "relative/path.md" }
+var selectedFiles = [];
+
+// Handle <input type="file"> and <input webkitdirectory> selection
+function handleFileInput(fileList) {
+    for (var i = 0; i < fileList.length; i++) {
+        var f = fileList[i];
+        // webkitRelativePath is "folder/sub/file.md" for folder selection, "" for plain files
+        var path = f.webkitRelativePath || f.name;
+        // Strip the top-level folder name for folder uploads (e.g. "my-skill/SKILL.md" -> "SKILL.md")
+        if (f.webkitRelativePath) {
+            var parts = path.split('/');
+            if (parts.length > 1) {
+                path = parts.slice(1).join('/');
+            }
+        }
+        // Skip hidden files/dirs
+        if (isHidden(path)) continue;
+        addFile(f, path);
+    }
+    renderFileList();
+}
+
+// Handle drag-and-drop (supports folders via webkitGetAsEntry)
+function handleDrop(dataTransfer) {
+    var items = dataTransfer.items;
+    if (!items || items.length === 0) {
+        // Fallback: plain file list
+        handleFileInput(dataTransfer.files);
+        return;
+    }
+
+    var entries = [];
+    for (var i = 0; i < items.length; i++) {
+        var entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+        if (entry) {
+            entries.push(entry);
+        }
+    }
+
+    if (entries.length === 0) {
+        handleFileInput(dataTransfer.files);
+        return;
+    }
+
+    // Recursively read all entries
+    var pending = 0;
+    var isTopLevelDir = entries.length === 1 && entries[0].isDirectory;
+
+    function readEntry(entry, basePath) {
+        if (entry.isFile) {
+            pending++;
+            entry.file(function(file) {
+                var path = basePath ? basePath + '/' + file.name : file.name;
+                if (!isHidden(path)) {
+                    addFile(file, path);
+                }
+                pending--;
+                if (pending === 0) renderFileList();
+            });
+        } else if (entry.isDirectory) {
+            pending++;
+            var reader = entry.createReader();
+            var allEntries = [];
+            // readEntries may return partial results, need to call repeatedly
+            function readBatch() {
+                reader.readEntries(function(results) {
+                    if (results.length === 0) {
+                        // Done reading this directory
+                        for (var i = 0; i < allEntries.length; i++) {
+                            var childPath;
+                            if (isTopLevelDir && !basePath) {
+                                // Strip the top-level folder name
+                                childPath = '';
+                            } else {
+                                childPath = basePath ? basePath + '/' + entry.name : entry.name;
+                            }
+                            readEntry(allEntries[i], childPath);
+                        }
+                        pending--;
+                        if (pending === 0) renderFileList();
+                    } else {
+                        for (var i = 0; i < results.length; i++) {
+                            allEntries.push(results[i]);
+                        }
+                        readBatch();
+                    }
+                });
+            }
+            readBatch();
+        }
+    }
+
+    for (var i = 0; i < entries.length; i++) {
+        readEntry(entries[i], '');
+    }
+}
+
+function isHidden(path) {
+    var parts = path.split('/');
+    for (var i = 0; i < parts.length; i++) {
+        if (parts[i].charAt(0) === '.') return true;
+    }
+    return false;
+}
+
+function addFile(file, path) {
+    // Deduplicate by path
+    for (var i = 0; i < selectedFiles.length; i++) {
+        if (selectedFiles[i].path === path) return;
+    }
+    selectedFiles.push({ file: file, path: path });
+}
+
+function removeFile(idx) {
+    selectedFiles.splice(idx, 1);
+    renderFileList();
+}
+
+function clearFiles() {
+    selectedFiles = [];
+    renderFileList();
+}
+
+function renderFileList() {
+    var el = document.getElementById('fileList');
+    if (selectedFiles.length === 0) { el.innerHTML = ''; return; }
+    var html = '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">';
+    html += '<span style="font-size: 0.8rem; color: var(--text-muted);">' + selectedFiles.length + ' file(s) selected</span>';
+    html += '<button type="button" onclick="clearFiles()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; text-decoration: underline;">Clear all</button>';
+    html += '</div>';
+    for (var i = 0; i < selectedFiles.length; i++) {
+        var f = selectedFiles[i];
+        var size = f.file.size < 1024 ? f.file.size + ' B' : (f.file.size / 1024).toFixed(1) + ' KB';
+        html += '<div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: var(--bg-secondary); border-radius: 4px; margin-bottom: 4px; font-size: 0.85rem;">';
+        html += '<span style="color: var(--text);">' + escapeHtml(f.path) + ' <span style="color: var(--text-muted);">(' + size + ')</span></span>';
+        html += '<button type="button" onclick="removeFile(' + i + ')" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 0 4px;">&times;</button>';
+        html += '</div>';
+    }
+    el.innerHTML = html;
+}
+
+function escapeHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+// Drag and drop
+var dropZone = document.getElementById('dropZone');
+if (dropZone) {
+    dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = 'var(--accent)';
+    });
+    dropZone.addEventListener('dragleave', function(e) {
+        dropZone.style.borderColor = 'var(--card-border)';
+    });
+    dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = 'var(--card-border)';
+        handleDrop(e.dataTransfer);
+    });
+}
+
+// Form submit — uses session cookie for auth, no token field needed
+document.getElementById('publishForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    var slug = document.getElementById('f-slug').value.trim();
+    var version = document.getElementById('f-version').value.trim();
+
+    if (!slug || !version) {
+        setStatus('Please fill in all required fields.', 'error');
+        return;
+    }
+    if (selectedFiles.length === 0) {
+        setStatus('Please add at least one file (SKILL.md is required).', 'error');
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('slug', slug);
+    formData.append('version', version);
+    var displayName = document.getElementById('f-displayName').value.trim();
+    if (displayName) formData.append('displayName', displayName);
+    var summary = document.getElementById('f-summary').value.trim();
+    if (summary) formData.append('summary', summary);
+    var tags = document.getElementById('f-tags').value.trim();
+    if (tags) formData.append('tags', tags);
+
+    for (var i = 0; i < selectedFiles.length; i++) {
+        // Use the relative path as the filename so the server knows the directory structure
+        formData.append('files', selectedFiles[i].file, selectedFiles[i].path);
+    }
+
+    var btn = document.getElementById('publishBtn');
+    btn.disabled = true;
+    btn.textContent = 'Publishing...';
+    setStatus('Uploading...', 'info');
+
+    fetch('/api/v1/skills', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    })
+    .then(function(resp) { return resp.json().then(function(data) { return { ok: resp.ok, data: data }; }); })
+    .then(function(result) {
+        btn.disabled = false;
+        btn.textContent = 'Publish Skill';
+        if (result.ok) {
+            setStatus('', '');
+            var res = document.getElementById('publishResult');
+            res.style.display = 'block';
+            var skill = result.data.skill || {};
+            var ver = result.data.version || {};
+            var files = ver.files || [];
+            document.getElementById('resultDetail').innerHTML =
+                '<strong>' + (skill.displayName || skill.slug) + '</strong> v' + (ver.version || '?') +
+                ' &mdash; ' + files.length + ' file(s)<br>' +
+                '<a href="/skills/' + skill.slug + '" style="margin-top: 8px; display: inline-block;">View skill page &rarr;</a>';
+        } else {
+            setStatus('Error: ' + (result.data.error || 'Unknown error'), 'error');
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Publish Skill';
+        setStatus('Network error: ' + err.message, 'error');
+    });
+});
+
+function setStatus(msg, type) {
+    var el = document.getElementById('publishStatus');
+    el.textContent = msg;
+    el.style.color = type === 'error' ? '#ef4444' : type === 'info' ? 'var(--text-muted)' : 'var(--accent)';
+}
+</script>
+{{end}}
+{{end}}

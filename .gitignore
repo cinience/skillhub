@@ -28,5 +28,19 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+.DS_Store
+
+# Built binary
+skillhub
+
+# Runtime data
+data/
+
+# OMC state
+.omc/
+
+# Frontend
+web/node_modules/
+web/static/

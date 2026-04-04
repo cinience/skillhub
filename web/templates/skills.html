@@ -1,0 +1,57 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<section style="padding: 40px 0;">
+    <div class="container">
+        <h1 style="font-size: 1.75rem; font-weight: 700; margin-bottom: 24px;">Skills</h1>
+
+        <div class="filter-bar">
+            <a href="/skills?sort=created" class="filter-btn {{if eq .Sort "created"}}active{{end}}">Newest</a>
+            <a href="/skills?sort=updated" class="filter-btn {{if eq .Sort "updated"}}active{{end}}">Recently Updated</a>
+            <a href="/skills?sort=downloads" class="filter-btn {{if eq .Sort "downloads"}}active{{end}}">Downloads</a>
+            <a href="/skills?sort=stars" class="filter-btn {{if eq .Sort "stars"}}active{{end}}">Stars</a>
+            <a href="/skills?sort=name" class="filter-btn {{if eq .Sort "name"}}active{{end}}">Name</a>
+        </div>
+
+        {{if .Skills}}
+        <div class="skill-grid">
+            {{range .Skills}}
+            <a href="/skills/{{.Slug}}">
+                <div class="card">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <div class="owner-avatar" style="width: 28px; height: 28px; font-size: 0.7rem; flex-shrink: 0;">{{initial .OwnerHandle}}</div>
+                        <div style="min-width: 0;">
+                            <div class="card-title" style="margin-bottom: 0;">{{if .DisplayName}}{{deref .DisplayName}}{{else}}{{.Slug}}{{end}}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">{{.OwnerHandle}}/{{.Slug}}</div>
+                        </div>
+                    </div>
+                    <div class="card-summary">{{if .Summary}}{{deref .Summary}}{{else}}No description{{end}}</div>
+                    {{if .Tags}}
+                    <div class="card-tags">
+                        {{range .Tags}}<span class="tag">{{.}}</span>{{end}}
+                    </div>
+                    {{end}}
+                    <div class="card-meta">
+                        <span>&#9733; {{.StarsCount}}</span>
+                        <span>&#8615; {{.Downloads}}</span>
+                        <span>{{formatTime .UpdatedAt}}</span>
+                    </div>
+                </div>
+            </a>
+            {{end}}
+        </div>
+
+        {{if .NextCursor}}
+        <div class="load-more">
+            <a href="/skills?sort={{.Sort}}&cursor={{.NextCursor}}" class="btn btn-secondary">Load more &darr;</a>
+        </div>
+        {{end}}
+        {{else}}
+        <div style="text-align: center; padding: 64px 0; color: var(--text-muted);">
+            <p style="font-size: 1.1rem;">No skills found yet.</p>
+            <p style="margin-top: 8px;"><a href="/publish">Be the first to publish one!</a></p>
+        </div>
+        {{end}}
+    </div>
+</section>
+{{end}}

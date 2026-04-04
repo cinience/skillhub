@@ -1,0 +1,60 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<section style="padding: 40px 0;">
+    <div class="container">
+        <div style="max-width: 640px; margin: 0 auto 40px;">
+            <form action="/search" method="GET" class="search-box">
+                <input type="text" name="q" class="search-input" placeholder="Search skills..." value="{{.Query}}" autofocus>
+                <button type="submit" class="btn btn-primary">Search</button>
+            </form>
+        </div>
+
+        {{if .Query}}
+        <div style="margin-bottom: 24px; color: var(--text-secondary); font-size: 0.9rem;">
+            {{if .Results}}
+                Found approximately <strong>{{.TotalHits}}</strong> results for "<strong>{{.Query}}</strong>"
+                <span style="color: var(--text-muted);">({{.ProcessingTimeMs}}ms)</span>
+            {{else}}
+                No results found for "<strong>{{.Query}}</strong>"
+            {{end}}
+        </div>
+
+        {{if .Results}}
+        <div class="skill-grid">
+            {{range .Results}}
+            <a href="/skills/{{index . "slug"}}">
+                <div class="card">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        {{if index . "ownerHandle"}}
+                        <div class="owner-avatar" style="width: 28px; height: 28px; font-size: 0.7rem; flex-shrink: 0;">{{initial (index . "ownerHandle")}}</div>
+                        {{end}}
+                        <div style="min-width: 0;">
+                            <div class="card-title" style="margin-bottom: 0;">{{if index . "displayName"}}{{index . "displayName"}}{{else}}{{index . "slug"}}{{end}}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted);">{{if index . "ownerHandle"}}{{index . "ownerHandle"}}/{{end}}{{index . "slug"}}</div>
+                        </div>
+                    </div>
+                    <div class="card-summary">{{if index . "summary"}}{{index . "summary"}}{{else}}No description{{end}}</div>
+                    {{if index . "tags"}}
+                    <div class="card-tags">
+                        {{range index . "tags"}}<span class="tag">{{.}}</span>{{end}}
+                    </div>
+                    {{end}}
+                    <div class="card-meta">
+                        {{if index . "stars"}}<span>&#9733; {{index . "stars"}}</span>{{end}}
+                        {{if index . "downloads"}}<span>&#8615; {{index . "downloads"}}</span>{{end}}
+                        {{if index . "ownerHandle"}}<span>{{index . "ownerHandle"}}</span>{{end}}
+                    </div>
+                </div>
+            </a>
+            {{end}}
+        </div>
+        {{end}}
+        {{else}}
+        <div style="text-align: center; padding: 64px 0; color: var(--text-muted);">
+            <p style="font-size: 1.1rem;">Enter a query to search for skills.</p>
+        </div>
+        {{end}}
+    </div>
+</section>
+{{end}}

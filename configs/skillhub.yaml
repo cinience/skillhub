@@ -1,0 +1,45 @@
+server:
+  port: 10070
+  host: "0.0.0.0"
+  base_url: "http://localhost:10070"
+
+database:
+  driver: "sqlite"                  # "sqlite" (default) or "postgres"
+  url: "./data/skillhub.db"        # SQLite file path or PostgreSQL DSN
+  max_open_conns: 25
+  max_idle_conns: 5
+
+search:
+  index_path: "./data/skills.bleve"
+
+gitstore:
+  base_path: ./data/repos
+
+  mirror:
+    enabled: false
+    provider: github
+    base_url: ""
+    org: ""
+    token_env: "GIT_MIRROR_TOKEN"
+    auto_push: true
+    push_on_startup: false
+
+  import:
+    enabled: false
+    webhook_secret_env: "WEBHOOK_SECRET"
+    allowed_origins:
+      - "https://github.com"
+      - "https://gitlab.com"
+    auto_publish: true
+    require_skill_md: true
+
+rate_limit:
+  read_limit: 120
+  read_window: 600
+  write_limit: 30
+  write_window: 120
+  download_limit: 20
+  download_window: 120
+
+auth:
+  token_prefix: "clh_"

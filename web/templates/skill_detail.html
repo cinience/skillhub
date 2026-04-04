@@ -1,0 +1,108 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<section style="padding: 40px 0;">
+    <div class="container">
+        <div class="detail-header">
+            <div class="owner-info" style="margin-bottom: 12px;">
+                <div class="owner-avatar">{{initial .Skill.OwnerHandle}}</div>
+                <span style="color: var(--text-secondary); font-size: 0.9rem;">{{.Skill.OwnerHandle}}</span>
+            </div>
+            <h1 class="detail-title">{{if .Skill.DisplayName}}{{deref .Skill.DisplayName}}{{else}}{{.Skill.Slug}}{{end}}</h1>
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; font-family: monospace;">{{.Skill.OwnerHandle}}/{{.Skill.Slug}}</div>
+            {{if .Skill.Summary}}<p class="detail-summary">{{deref .Skill.Summary}}</p>{{end}}
+            <div class="detail-stats">
+                <div class="stat">
+                    <span class="stat-value">{{.Skill.StarsCount}}</span>
+                    <span class="stat-label">Stars</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">{{.Skill.Downloads}}</span>
+                    <span class="stat-label">Downloads</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">{{.Skill.Installs}}</span>
+                    <span class="stat-label">Installs</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value">{{.Skill.VersionsCount}}</span>
+                    <span class="stat-label">Versions</span>
+                </div>
+            </div>
+            {{if .Skill.Tags}}
+            <div class="card-tags">
+                {{range .Skill.Tags}}<span class="tag">{{.}}</span>{{end}}
+            </div>
+            {{end}}
+        </div>
+
+        <div class="detail-layout">
+            <div>
+                {{if .SkillMdHTML}}
+                <div class="markdown-body">
+                    {{.SkillMdHTML}}
+                </div>
+                {{else}}
+                <div style="color: var(--text-muted); padding: 40px 0; text-align: center;">
+                    No SKILL.md content available.
+                </div>
+                {{end}}
+            </div>
+
+            <div>
+                <div class="detail-sidebar">
+                    {{if .LatestVersion}}
+                    <div class="sidebar-section">
+                        <div class="sidebar-label">Install</div>
+                        <div class="code-block" style="padding: 10px 14px; font-size: 0.8rem;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <span class="cmd">skillhub install {{.Skill.Slug}}</span>
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <div class="sidebar-label">Latest Version</div>
+                        <div class="sidebar-value" style="font-family: monospace; color: var(--accent);">v{{.LatestVersion.Version}}</div>
+                    </div>
+                    {{end}}
+                    <div class="sidebar-section">
+                        <div class="sidebar-label">Published by</div>
+                        <div class="owner-info">
+                            <div class="owner-avatar">{{initial .Skill.OwnerHandle}}</div>
+                            <span class="sidebar-value">{{.Skill.OwnerHandle}}</span>
+                        </div>
+                    </div>
+                    <div class="sidebar-section">
+                        <div class="sidebar-label">Created</div>
+                        <div class="sidebar-value">{{formatTime .Skill.CreatedAt}}</div>
+                    </div>
+                    <div class="sidebar-section">
+                        <div class="sidebar-label">Updated</div>
+                        <div class="sidebar-value">{{formatTime .Skill.UpdatedAt}}</div>
+                    </div>
+                    {{if .LatestVersion}}
+                    <div class="sidebar-section">
+                        <a href="/api/v1/download?slug={{.Skill.Slug}}&version={{.LatestVersion.Version}}" class="btn btn-secondary" style="width: 100%; justify-content: center;">
+                            &#8615; Download ZIP
+                        </a>
+                    </div>
+                    {{end}}
+                </div>
+
+                {{if .Versions}}
+                <div class="detail-sidebar" style="margin-top: 16px;">
+                    <div class="sidebar-label" style="margin-bottom: 12px;">Version History</div>
+                    <ul class="version-list">
+                        {{range .Versions}}
+                        <li class="version-item">
+                            <span class="version-tag">v{{.Version}}</span>
+                            <span class="version-date">{{formatTime .CreatedAt}}</span>
+                        </li>
+                        {{end}}
+                    </ul>
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</section>
+{{end}}

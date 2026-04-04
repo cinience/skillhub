@@ -1,0 +1,40 @@
+services:
+  skillhub:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+    ports:
+      - "10070:10070"
+    volumes:
+      - skill-repos:/app/data/repos
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SKILLHUB_DB_DRIVER: postgres
+      SKILLHUB_DATABASE_URL: postgres://skillhub:skillhub@postgres:5432/skillhub?sslmode=disable
+      SKILLHUB_GIT_PATH: /app/data/repos
+      SKILLHUB_BASE_URL: http://localhost:10070
+      SKILLHUB_CONFIG: /app/configs/skillhub.yaml
+      SKILLHUB_ADMIN_USER: ${SKILLHUB_ADMIN_USER:?Set SKILLHUB_ADMIN_USER}
+      SKILLHUB_ADMIN_PASSWORD: ${SKILLHUB_ADMIN_PASSWORD:?Set SKILLHUB_ADMIN_PASSWORD}
+
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: skillhub
+      POSTGRES_PASSWORD: skillhub
+      POSTGRES_DB: skillhub
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skillhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  skill-repos:
+  pg-data:

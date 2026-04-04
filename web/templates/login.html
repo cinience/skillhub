@@ -1,0 +1,35 @@
+{{template "layout" .}}
+
+{{define "content"}}
+<div class="container" style="padding: 48px 24px;">
+    <div style="max-width: 420px; margin: 0 auto;">
+        <h1 style="font-size: 2rem; font-weight: 700; margin-bottom: 8px; text-align: center;">Login</h1>
+        <p style="color: var(--text-secondary); margin-bottom: 32px; text-align: center;">Sign in to publish and manage skills.</p>
+
+        {{if .Error}}
+        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; color: #ef4444; font-size: 0.9rem;">
+            {{.Error}}
+        </div>
+        {{end}}
+
+        <form method="POST" action="/login" class="card" style="padding: 24px;">
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Username</label>
+                <input type="text" name="handle" required autocomplete="username" autofocus
+                    value="{{.Handle}}"
+                    style="width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px 14px; font-size: 0.9rem; color: var(--text); outline: none;">
+            </div>
+
+            <div style="margin-bottom: 24px;">
+                <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Password</label>
+                <input type="password" name="password" required autocomplete="current-password"
+                    style="width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 10px 14px; font-size: 0.9rem; color: var(--text); outline: none;">
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 1rem;">
+                Sign In
+            </button>
+        </form>
+    </div>
+</div>
+{{end}}

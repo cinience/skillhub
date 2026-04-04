@@ -1,0 +1,462 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}} - {{end}}SkillHub</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --bg-secondary: #111111;
+            --card-bg: #1a1a1a;
+            --card-border: #2a2a2a;
+            --text: #e5e5e5;
+            --text-secondary: #a3a3a3;
+            --text-muted: #737373;
+            --accent: #22c55e;
+            --accent-hover: #16a34a;
+            --accent-bg: rgba(34, 197, 94, 0.1);
+            --link: #22c55e;
+            --code-bg: #1e1e1e;
+            --tag-bg: #1f2937;
+            --tag-text: #9ca3af;
+            --input-bg: #1a1a1a;
+            --input-border: #333;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        [data-theme="light"] {
+            --bg: #fafafa;
+            --bg-secondary: #f5f5f5;
+            --card-bg: #ffffff;
+            --card-border: #e5e5e5;
+            --text: #171717;
+            --text-secondary: #525252;
+            --text-muted: #a3a3a3;
+            --accent: #16a34a;
+            --accent-hover: #15803d;
+            --accent-bg: rgba(22, 163, 74, 0.08);
+            --link: #16a34a;
+            --code-bg: #f3f4f6;
+            --tag-bg: #f3f4f6;
+            --tag-text: #6b7280;
+            --input-bg: #ffffff;
+            --input-border: #d4d4d4;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        a { color: var(--link); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; width: 100%; }
+
+        /* Header */
+        .header {
+            border-bottom: 1px solid var(--card-border);
+            background: var(--bg-secondary);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+        }
+        .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .logo:hover { text-decoration: none; }
+        .logo-icon { color: var(--accent); font-size: 1.4rem; }
+        .nav { display: flex; align-items: center; gap: 24px; }
+        .nav a {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .nav a:hover { color: var(--text); text-decoration: none; }
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--card-border);
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 1rem;
+            line-height: 1;
+        }
+        .theme-toggle:hover { color: var(--text); border-color: var(--text-muted); }
+
+        /* Main */
+        main { flex: 1; }
+
+        /* Cards */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 20px;
+            transition: border-color 0.15s;
+        }
+        .card:hover { border-color: var(--accent); }
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+        .card-summary {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .card-meta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .card-meta span { display: flex; align-items: center; gap: 4px; }
+        .card-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .tag {
+            background: var(--tag-bg);
+            color: var(--tag-text);
+            padding: 2px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+        }
+
+        /* Grid */
+        .skill-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+        }
+        .skill-grid a { color: inherit; }
+        .skill-grid a:hover { text-decoration: none; }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            text-decoration: none !important;
+            transition: background 0.15s;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-secondary {
+            background: var(--card-bg);
+            color: var(--text);
+            border: 1px solid var(--card-border);
+        }
+        .btn-secondary:hover { border-color: var(--text-muted); }
+
+        /* Code block */
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+            font-size: 0.875rem;
+            color: var(--text);
+            overflow-x: auto;
+            position: relative;
+        }
+        .code-block .prefix { color: var(--text-muted); user-select: none; }
+        .code-block .cmd { color: var(--accent); }
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-muted);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+        .copy-btn:hover { color: var(--text); }
+
+        /* Search */
+        .search-box {
+            display: flex;
+            gap: 8px;
+            max-width: 600px;
+            width: 100%;
+        }
+        .search-input {
+            flex: 1;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            color: var(--text);
+            outline: none;
+        }
+        .search-input:focus { border-color: var(--accent); }
+        .search-input::placeholder { color: var(--text-muted); }
+
+        /* Filter bar */
+        .filter-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--text-secondary);
+            padding: 6px 16px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-decoration: none !important;
+        }
+        .filter-btn:hover { border-color: var(--text-muted); color: var(--text); }
+        .filter-btn.active {
+            background: var(--accent-bg);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Footer */
+        .footer {
+            border-top: 1px solid var(--card-border);
+            padding: 32px 0;
+            margin-top: 64px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            text-align: center;
+        }
+
+        /* Markdown content */
+        .markdown-body { font-size: 0.95rem; line-height: 1.7; color: var(--text); }
+        .markdown-body h1 { font-size: 1.8rem; margin: 24px 0 12px; border-bottom: 1px solid var(--card-border); padding-bottom: 8px; }
+        .markdown-body h2 { font-size: 1.4rem; margin: 20px 0 10px; }
+        .markdown-body h3 { font-size: 1.15rem; margin: 16px 0 8px; }
+        .markdown-body p { margin-bottom: 12px; }
+        .markdown-body pre {
+            background: var(--code-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            padding: 12px 16px;
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+        .markdown-body code {
+            font-family: "SF Mono", "Fira Code", monospace;
+            font-size: 0.85em;
+        }
+        .markdown-body :not(pre) > code {
+            background: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .markdown-body ul, .markdown-body ol { padding-left: 24px; margin-bottom: 12px; }
+        .markdown-body li { margin-bottom: 4px; }
+        .markdown-body a { color: var(--link); }
+        .markdown-body blockquote {
+            border-left: 3px solid var(--accent);
+            padding-left: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+        .markdown-body table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
+        .markdown-body th, .markdown-body td {
+            border: 1px solid var(--card-border);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .markdown-body th { background: var(--bg-secondary); }
+        .markdown-body img { max-width: 100%; border-radius: 8px; }
+
+        /* Detail page */
+        .detail-header { margin-bottom: 32px; }
+        .detail-title { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+        .detail-summary { font-size: 1.05rem; color: var(--text-secondary); margin-bottom: 16px; }
+        .detail-stats {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        .stat-value { font-size: 1.25rem; font-weight: 700; color: var(--text); }
+        .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .detail-sidebar {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .sidebar-section { margin-bottom: 20px; }
+        .sidebar-section:last-child { margin-bottom: 0; }
+        .sidebar-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .sidebar-value { font-size: 0.9rem; color: var(--text); }
+
+        .detail-layout {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 32px;
+            align-items: start;
+        }
+
+        .version-list { list-style: none; }
+        .version-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--card-border);
+            font-size: 0.875rem;
+        }
+        .version-item:last-child { border-bottom: none; }
+        .version-tag { font-weight: 600; color: var(--accent); }
+        .version-date { color: var(--text-muted); }
+
+        /* Owner */
+        .owner-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .owner-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent-bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: var(--accent);
+        }
+
+        /* Pagination */
+        .load-more {
+            text-align: center;
+            margin-top: 32px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .detail-layout { grid-template-columns: 1fr; }
+            .skill-grid { grid-template-columns: 1fr; }
+            .hero-title { font-size: 2rem !important; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container header-inner">
+            <a href="/" class="logo">
+                <span class="logo-icon">&#9670;</span>
+                <span>SkillHub</span>
+            </a>
+            <nav class="nav">
+                <a href="/skills">Skills</a>
+                <a href="/search">Search</a>
+                <a href="/publish">Publish</a>
+                {{if .CurrentUser}}
+                <span style="color: var(--text-secondary); font-size: 0.875rem; font-weight: 500;">{{.CurrentUser.Handle}}</span>
+                <form method="POST" action="/logout" style="display: inline; margin: 0;">
+                    <button type="submit" style="background: none; border: 1px solid var(--card-border); color: var(--text-secondary); cursor: pointer; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem;">Logout</button>
+                </form>
+                {{else}}
+                <a href="/login" class="btn btn-secondary" style="padding: 6px 16px; font-size: 0.8rem;">Login</a>
+                {{end}}
+                <a href="https://github.com/cinience/skillhub" target="_blank" rel="noopener noreferrer" class="theme-toggle" title="GitHub" style="text-decoration:none;">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+                </a>
+                <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">&#9789;</button>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        {{template "content" .}}
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            SkillHub &mdash; A skill registry for AI agents.
+        </div>
+    </footer>
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('theme');
+            var theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+            document.documentElement.setAttribute('data-theme', theme);
+            updateIcon(theme);
+        })();
+
+        function toggleTheme() {
+            var current = document.documentElement.getAttribute('data-theme');
+            var next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+            updateIcon(next);
+        }
+
+        function updateIcon(theme) {
+            var btn = document.getElementById('themeBtn');
+            if (btn) btn.textContent = theme === 'dark' ? '\u263D' : '\u2600';
+        }
+
+        function copyCode(el) {
+            var code = el.parentElement.querySelector('.cmd');
+            if (code) {
+                navigator.clipboard.writeText(code.textContent.trim());
+                el.textContent = 'Copied!';
+                setTimeout(function() { el.textContent = 'Copy'; }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>
+{{end}}
