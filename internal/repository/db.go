@@ -9,7 +9,7 @@ import (
 	"github.com/cinience/skillhub/internal/config"
 	"github.com/cinience/skillhub/internal/model"
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
