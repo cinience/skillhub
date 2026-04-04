@@ -1,0 +1,284 @@
+package handler
+
+import (
+	"bytes"
+	"context"
+	"html/template"
+	"log"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/cinience/skillhub/pkg/auth"
+	"github.com/cinience/skillhub/pkg/middleware"
+	"github.com/cinience/skillhub/pkg/model"
+	"github.com/cinience/skillhub/pkg/search"
+	"github.com/yuin/goldmark"
+)
+
+// WebSkillService defines the skill operations needed by the web UI.
+type WebSkillService interface {
+	ListSkills(ctx context.Context, limit int, cursor, sort string) ([]model.SkillWithOwner, string, error)
+	GetSkill(ctx context.Context, slug string) (*model.SkillWithOwner, error)
+	GetVersions(ctx context.Context, slug string) ([]model.SkillVersion, error)
+	GetFile(ctx context.Context, slug, version, path string) ([]byte, error)
+}
+
+// WebSearchService defines the search operations needed by the web UI.
+type WebSearchService interface {
+	Search(ctx context.Context, query string, limit, offset int, sort []string, filters string) (*search.SearchResult, error)
+}
+
+type WebHandler struct {
+	svc       WebSkillService
+	searchCli WebSearchService
+	authSvc   *auth.Service
+	templates map[string]*template.Template
+	baseURL   string
+}
+
+// TemplateFuncMap returns the template function map used by the web handler.
+func TemplateFuncMap() template.FuncMap {
+	return template.FuncMap{
+		"deref": func(s *string) string {
+			if s == nil {
+				return ""
+			}
+			return *s
+		},
+		"initial": func(s string) string {
+			if len(s) == 0 {
+				return "?"
+			}
+			return strings.ToUpper(s[:1])
+		},
+		"formatTime": func(t time.Time) string {
+			return t.Format("Jan 2, 2006")
+		},
+	}
+}
+
+func NewWebHandler(svc WebSkillService, searchCli WebSearchService, authSvc *auth.Service, templateDir string, baseURL string) *WebHandler {
+	funcMap := TemplateFuncMap()
+	layoutFile := filepath.Join(templateDir, "layout.html")
+
+	pages := []string{"index.html", "skills.html", "skill_detail.html", "search.html", "publish.html", "login.html"}
+	templates := make(map[string]*template.Template, len(pages))
+
+	for _, page := range pages {
+		pageFile := filepath.Join(templateDir, page)
+		tmpl := template.Must(
+			template.New("").Funcs(funcMap).ParseFiles(layoutFile, pageFile),
+		)
+		templates[page] = tmpl
+	}
+
+	return &WebHandler{
+		svc:       svc,
+		searchCli: searchCli,
+		authSvc:   authSvc,
+		templates: templates,
+		baseURL:   baseURL,
+	}
+}
+
+// NewWebHandlerWithTemplate creates a WebHandler with pre-parsed templates (for testing).
+func NewWebHandlerWithTemplate(svc WebSkillService, searchCli WebSearchService, templates map[string]*template.Template) *WebHandler {
+	return &WebHandler{
+		svc:       svc,
+		searchCli: searchCli,
+		templates: templates,
+	}
+}
+
+func (h *WebHandler) render(c *gin.Context, name string, data gin.H) {
+	tmpl, ok := h.templates[name]
+	if !ok {
+		log.Printf("template not found: %s", name)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+		return
+	}
+	// Inject current user into all templates
+	if user := middleware.GetUser(c); user != nil {
+		data["CurrentUser"] = user
+	}
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.ExecuteTemplate(c.Writer, name, data); err != nil {
+		log.Printf("template error: %v", err)
+		c.String(http.StatusInternalServerError, "Internal Server Error")
+	}
+}
+
+// Index renders the homepage with popular skills.
+func (h *WebHandler) Index(c *gin.Context) {
+	ctx := c.Request.Context()
+	skills, _, _ := h.svc.ListSkills(ctx, 6, "", "downloads")
+
+	h.render(c, "index.html", gin.H{
+		"Title":  "",
+		"Skills": skills,
+	})
+}
+
+// Skills renders the paginated skills list.
+func (h *WebHandler) Skills(c *gin.Context) {
+	ctx := c.Request.Context()
+	sort := c.DefaultQuery("sort", "created")
+	cursor := c.Query("cursor")
+
+	skills, nextCursor, _ := h.svc.ListSkills(ctx, 20, cursor, sort)
+
+	h.render(c, "skills.html", gin.H{
+		"Title":      "Skills",
+		"Skills":     skills,
+		"Sort":       sort,
+		"NextCursor": nextCursor,
+	})
+}
+
+// SkillDetail renders the detail page for a single skill.
+func (h *WebHandler) SkillDetail(c *gin.Context) {
+	ctx := c.Request.Context()
+	slug := c.Param("slug")
+
+	skill, err := h.svc.GetSkill(ctx, slug)
+	if err != nil || skill == nil {
+		c.String(http.StatusNotFound, "Skill not found")
+		return
+	}
+
+	// Get versions
+	versions, _ := h.svc.GetVersions(ctx, slug)
+
+	// Get latest version
+	var latestVersion interface{}
+	if len(versions) > 0 {
+		latestVersion = versions[0]
+	}
+
+	// Render SKILL.md as HTML
+	var skillMdHTML template.HTML
+	content, err := h.svc.GetFile(ctx, slug, "latest", "SKILL.md")
+	if err == nil && len(content) > 0 {
+		content = stripFrontmatter(content)
+		var buf bytes.Buffer
+		if err := goldmark.Convert(content, &buf); err == nil {
+			skillMdHTML = template.HTML(buf.String())
+		}
+	}
+
+	h.render(c, "skill_detail.html", gin.H{
+		"Title":         skill.Slug,
+		"Skill":         skill,
+		"Versions":      versions,
+		"LatestVersion": latestVersion,
+		"SkillMdHTML":   skillMdHTML,
+	})
+}
+
+// Search renders the search page with results.
+func (h *WebHandler) Search(c *gin.Context) {
+	query := c.Query("q")
+
+	data := gin.H{
+		"Title":   "Search",
+		"Query":   query,
+		"Results": nil,
+	}
+
+	if query != "" && h.searchCli != nil {
+		ctx := c.Request.Context()
+		filters := "moderationStatus = approved AND isDeleted = false"
+		result, err := h.searchCli.Search(ctx, query, 20, 0, nil, filters)
+		if err == nil && result != nil {
+			data["Results"] = result.Hits
+			data["TotalHits"] = result.EstimatedTotal
+			data["ProcessingTimeMs"] = result.ProcessingTimeMs
+		}
+	}
+
+	h.render(c, "search.html", data)
+}
+
+// Publish renders the publish guide page.
+func (h *WebHandler) Publish(c *gin.Context) {
+	baseURL := h.baseURL
+	if baseURL == "" {
+		baseURL = "http://" + c.Request.Host
+	}
+	h.render(c, "publish.html", gin.H{
+		"Title":   "Publish",
+		"BaseURL": baseURL,
+	})
+}
+
+// stripFrontmatter removes YAML frontmatter (--- delimited) from markdown content.
+func stripFrontmatter(data []byte) []byte {
+	s := string(data)
+	if !strings.HasPrefix(s, "---") {
+		return data
+	}
+	// Find the closing ---
+	end := strings.Index(s[3:], "\n---")
+	if end < 0 {
+		return data
+	}
+	// Skip past closing --- and the newline after it
+	rest := s[3+end+4:]
+	return []byte(rest)
+}
+
+// LoginPage renders the login form (GET /login).
+func (h *WebHandler) LoginPage(c *gin.Context) {
+	// If already logged in, redirect to home
+	if user := middleware.GetUser(c); user != nil {
+		c.Redirect(http.StatusFound, "/")
+		return
+	}
+	h.render(c, "login.html", gin.H{
+		"Title": "Login",
+	})
+}
+
+// LoginSubmit handles the login form submission (POST /login).
+func (h *WebHandler) LoginSubmit(c *gin.Context) {
+	handle := strings.TrimSpace(c.PostForm("handle"))
+	password := c.PostForm("password")
+
+	if handle == "" || password == "" {
+		h.render(c, "login.html", gin.H{
+			"Title":  "Login",
+			"Error":  "Username and password are required.",
+			"Handle": handle,
+		})
+		return
+	}
+
+	rawToken, _, err := h.authSvc.Login(c.Request.Context(), handle, password)
+	if err != nil {
+		h.render(c, "login.html", gin.H{
+			"Title":  "Login",
+			"Error":  err.Error(),
+			"Handle": handle,
+		})
+		return
+	}
+
+	// Set session cookie (httpOnly, 30 days)
+	c.SetCookie("session_token", rawToken, 30*24*3600, "/", "", false, true)
+
+	// Redirect to the page they came from, or home
+	redirect := c.Query("redirect")
+	if redirect == "" {
+		redirect = "/"
+	}
+	c.Redirect(http.StatusFound, redirect)
+}
+
+// Logout clears the session cookie (POST /logout).
+func (h *WebHandler) Logout(c *gin.Context) {
+	c.SetCookie("session_token", "", -1, "/", "", false, true)
+	c.Redirect(http.StatusFound, "/")
+}

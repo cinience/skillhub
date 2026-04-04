@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/cinience/skillhub/internal/auth"
-	"github.com/cinience/skillhub/internal/cli"
-	"github.com/cinience/skillhub/internal/config"
-	"github.com/cinience/skillhub/internal/model"
-	"github.com/cinience/skillhub/internal/repository"
-	"github.com/cinience/skillhub/internal/server"
+	"github.com/cinience/skillhub/pkg/auth"
+	"github.com/cinience/skillhub/pkg/cli"
+	"github.com/cinience/skillhub/pkg/config"
+	"github.com/cinience/skillhub/pkg/model"
+	"github.com/cinience/skillhub/pkg/repository"
+	"github.com/cinience/skillhub/pkg/server"
 )
 
 func main() {
