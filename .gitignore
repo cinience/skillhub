@@ -33,7 +33,7 @@ go.work.sum
 .DS_Store
 
 # Built binary
-skillhub
+/skillhub
 
 # Runtime data
 data/
