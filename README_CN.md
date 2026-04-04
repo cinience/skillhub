@@ -1,5 +1,8 @@
 # SkillHub
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cinience/skillhub)](https://goreportcard.com/report/github.com/cinience/skillhub)
+
 自托管的 Agent 技能注册中心，用于发布、版本管理与分发 agent 技能。支持 Web UI、REST API 和 CLI 客户端，兼容 [ClawHub](https://github.com/openclaw/clawhub) 协议。适合企业内部构建自己的 agent 技能注册中心。
 
 [English](README.md) | [中文](README_CN.md)
@@ -8,57 +11,57 @@
 
 - **数据自主** — 部署在你自己的基础设施上，无厂商锁定，无外部依赖
 - **单二进制** — 一个 Go 二进制文件同时提供注册中心、Web UI 和 CLI，随处部署
+- **零依赖模式** — 默认使用 SQLite，无需任何外部服务。生产环境可选 PostgreSQL
 - **Git 原生版本管理** — 每个技能版本对应一个 Git 提交，内置完整历史、差异对比和回滚能力
-- **即时搜索** — 基于 Meilisearch 的全文搜索，支持模糊匹配，覆盖名称、摘要和标签
+- **即时搜索** — 内嵌 [Bleve](https://blevesearch.com/) 全文搜索引擎，覆盖名称、摘要和标签
 - **ClawHub 兼容** — 实现 ClawHub 注册中心协议，发布到 SkillHub 的技能可被任何 ClawHub 兼容客户端使用
 - **Webhook 导入** — 推送到 GitHub/GitLab/Gitea 后自动导入并发布技能
 - **认证与权限** — bcrypt 密码认证、作用域 API Token、基于角色的访问控制（admin / moderator / user）
 
 ## 快速开始
 
-### Docker Compose（推荐）
+### 单二进制部署（最简方式）
+
+前置条件：Go 1.25+、Node.js 22+
 
 ```bash
 git clone https://github.com/cinience/skillhub.git
 cd skillhub
-make docker-up
-```
-
-一条命令启动 PostgreSQL、Meilisearch 和 SkillHub。首次启动自动创建管理员账号（`admin` / `admin123`）。
-
-自定义管理员：
-
-```bash
-SKILLHUB_ADMIN_USER=myname SKILLHUB_ADMIN_PASSWORD=secret make docker-up
-```
-
-浏览器打开 http://localhost:8080。
-
-### 本地开发
-
-前置条件：Go 1.25+、Docker
-
-```bash
-# 一键启动：启动依赖 + 编译 + 创建管理员 + 启动服务
 make quickstart ADMIN_USER=admin ADMIN_PASSWORD=admin123
 ```
 
-分步执行：
+自动编译（前端 + 后端）、创建管理员并启动服务，使用 SQLite — 无需 Docker 或外部数据库。
+
+浏览器打开 http://localhost:10070。
+
+### Docker Compose（生产部署）
 
 ```bash
-make deps-up                                        # 启动 PostgreSQL + Meilisearch
-make setup ADMIN_USER=admin ADMIN_PASSWORD=admin123  # 编译 + 创建管理员
-make dev                                             # 启动服务 :8080
+git clone https://github.com/cinience/skillhub.git
+cd skillhub
+SKILLHUB_ADMIN_PASSWORD=secret make docker-up
 ```
 
-### 单二进制部署
+一条命令启动 PostgreSQL 和 SkillHub。首次启动自动创建管理员账号。
+
+浏览器打开 http://localhost:10070。
+
+### 分步执行
 
 ```bash
-go build -o skillhub ./cmd/skillhub/
+make setup ADMIN_USER=admin ADMIN_PASSWORD=admin123  # 编译 + 创建管理员
+make dev                                             # 启动服务 :10070
+```
 
-SKILLHUB_ADMIN_USER=admin \
-SKILLHUB_ADMIN_PASSWORD=admin123 \
-./skillhub serve
+### PostgreSQL 模式（可选）
+
+默认使用 SQLite。如需使用 PostgreSQL：
+
+```bash
+make pg-up   # 通过 Docker 启动 PostgreSQL
+SKILLHUB_DB_DRIVER=postgres \
+SKILLHUB_DATABASE_URL='postgres://skillhub:skillhub@localhost:5432/skillhub?sslmode=disable' \
+make dev
 ```
 
 服务启动时自动执行数据库迁移并创建管理员。后续重启幂等，不会重复创建。
@@ -103,9 +106,9 @@ skillhub admin set-password --user alice --password newpass
 ```mermaid
 graph LR
     subgraph 客户端
-        W["🌐 Web UI"]
-        C["⌨️ CLI"]
-        A["🤖 AI Agent"]
+        W["Web UI"]
+        C["CLI"]
+        A["AI Agent"]
     end
 
     subgraph SkillHub["SkillHub 服务端"]
@@ -117,12 +120,12 @@ graph LR
 
     subgraph 存储
         G[("Git<br/>仓库")]
-        M[("Meili<br/>搜索")]
-        P[("Postgres<br/>数据库")]
+        B[("Bleve<br/>搜索")]
+        D[("SQLite /<br/>Postgres")]
     end
 
     W & C & A --> R
-    S --> G & M & P
+    S --> G & B & D
 ```
 
 ## 项目结构
@@ -139,13 +142,13 @@ skillhub/
 │   ├── handler/             # HTTP 处理器（技能、认证、搜索、管理、Web UI）
 │   ├── middleware/          # 认证、限流、请求 ID、日志
 │   ├── model/               # 领域模型（User、Skill、Version、Token、Star）
-│   ├── repository/          # PostgreSQL 数据访问层（sqlx）
-│   ├── search/              # Meilisearch 集成
+│   ├── repository/          # 数据库访问层（GORM）
+│   ├── search/              # Bleve 全文搜索集成
 │   ├── server/              # 服务启动、路由注册、自动初始化
 │   └── service/             # 业务逻辑（发布、下载、版本管理）
-├── migrations/              # SQL 迁移文件（golang-migrate）
 ├── configs/                 # 默认配置文件（skillhub.yaml）
-├── web/templates/           # 服务端渲染 HTML（Go 模板）
+├── web/                     # React 前端（Vite + TypeScript + i18n）
+├── web/templates/           # 服务端渲染 HTML 备用方案（Go 模板）
 ├── deployments/docker/      # Dockerfile + docker-compose.yml
 ├── Makefile
 └── go.mod
@@ -157,12 +160,11 @@ skillhub/
 
 | 变量 | 说明 | 默认值 |
 |---|---|---|
-| `SKILLHUB_PORT` | 服务端口 | `8080` |
+| `SKILLHUB_PORT` | 服务端口 | `10070` |
 | `SKILLHUB_HOST` | 绑定地址 | `0.0.0.0` |
-| `SKILLHUB_BASE_URL` | 公开访问 URL | `http://localhost:8080` |
-| `SKILLHUB_DATABASE_URL` | PostgreSQL 连接串 | `postgres://skillhub:skillhub@localhost:5432/skillhub?sslmode=disable` |
-| `SKILLHUB_MEILI_URL` | Meilisearch 地址 | `http://localhost:7700` |
-| `SKILLHUB_MEILI_KEY` | Meilisearch API 密钥 | _（空）_ |
+| `SKILLHUB_BASE_URL` | 公开访问 URL | `http://localhost:10070` |
+| `SKILLHUB_DB_DRIVER` | 数据库驱动 | `sqlite` |
+| `SKILLHUB_DATABASE_URL` | 数据库连接串 | `./data/skillhub.db` |
 | `SKILLHUB_GIT_PATH` | Git 仓库存储路径 | `./data/repos` |
 | `SKILLHUB_ADMIN_USER` | 启动时自动创建管理员用户名 | _（空）_ |
 | `SKILLHUB_ADMIN_PASSWORD` | 管理员密码 | _（空）_ |
@@ -173,14 +175,14 @@ skillhub/
 CLI 客户端配置存储在 `~/.skillhub/config.yaml`：
 
 ```yaml
-registry: http://localhost:8080    # 注册中心地址
-token: clh_xxxxxxxxxxxx            # API Token（通过 skillhub login 设置）
-skills_dir: ~/.skillhub/skills    # 技能安装目录（可选）
+registry: http://localhost:10070  # 注册中心地址
+token: clh_xxxxxxxxxxxx           # API Token（通过 skillhub login 设置）
+skills_dir: ~/.skillhub/skills   # 技能安装目录（可选）
 ```
 
 | 字段 | 说明 | 默认值 |
 |---|---|---|
-| `registry` | 注册中心地址 | `http://localhost:8080` |
+| `registry` | 注册中心地址 | `http://localhost:10070` |
 | `token` | API Token，用于认证 | _（通过 `skillhub login` 设置）_ |
 | `skills_dir` | 本地技能安装目录 | `~/.skillhub/skills` |
 
@@ -237,13 +239,20 @@ skills_dir: ~/.skillhub/skills    # 技能安装目录（可选）
 |---|---|
 | 语言 | Go 1.25 |
 | Web 框架 | [Gin](https://github.com/gin-gonic/gin) |
-| 数据库 | PostgreSQL 17 + [sqlx](https://github.com/jmoiron/sqlx) |
-| 数据库迁移 | [golang-migrate](https://github.com/golang-migrate/migrate) |
-| 搜索引擎 | [Meilisearch](https://www.meilisearch.com/) |
+| 前端 | React 19 + Vite + TypeScript |
+| 数据库 | SQLite（默认）/ PostgreSQL 17，via [GORM](https://gorm.io/) |
+| 搜索引擎 | [Bleve](https://blevesearch.com/)（内嵌全文搜索）|
 | Git 存储 | [go-git](https://github.com/go-git/go-git) |
 | 认证 | bcrypt + HMAC Token |
-| 版本管理 | [语义化版本](https://semver.org/) via [semver](https://github.com/Masterminds/semver) |
+
+## 贡献
+
+请参阅 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发环境设置、编码规范和 PR 流程。
+
+## 安全
+
+如需报告安全漏洞，请参阅 [SECURITY.md](SECURITY.md)。
 
 ## 许可证
 
-MIT
+[MIT](LICENSE)

@@ -10,14 +10,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
     environment:
       SKILLHUB_DB_DRIVER: postgres
       SKILLHUB_DATABASE_URL: postgres://skillhub:skillhub@postgres:5432/skillhub?sslmode=disable
       SKILLHUB_GIT_PATH: /app/data/repos
       SKILLHUB_BASE_URL: http://localhost:10070
       SKILLHUB_CONFIG: /app/configs/skillhub.yaml
-      SKILLHUB_ADMIN_USER: ${SKILLHUB_ADMIN_USER:?Set SKILLHUB_ADMIN_USER}
+      SKILLHUB_ADMIN_USER: ${SKILLHUB_ADMIN_USER:-admin}
       SKILLHUB_ADMIN_PASSWORD: ${SKILLHUB_ADMIN_PASSWORD:?Set SKILLHUB_ADMIN_PASSWORD}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:10070/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   postgres:
     image: postgres:17-alpine
@@ -25,6 +31,7 @@ services:
       - "5432:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
     environment:
       POSTGRES_USER: skillhub
       POSTGRES_PASSWORD: skillhub

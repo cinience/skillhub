@@ -46,7 +46,7 @@ func LoadConfig() (*CLIConfig, error) {
 	data, err := os.ReadFile(configPath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &CLIConfig{Registry: "http://localhost:8080"}, nil
+			return &CLIConfig{Registry: "http://localhost:10070"}, nil
 		}
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
@@ -56,7 +56,7 @@ func LoadConfig() (*CLIConfig, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	if cfg.Registry == "" {
-		cfg.Registry = "http://localhost:8080"
+		cfg.Registry = "http://localhost:10070"
 	}
 	return &cfg, nil
 }

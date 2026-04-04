@@ -1,5 +1,8 @@
 # SkillHub
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cinience/skillhub)](https://goreportcard.com/report/github.com/cinience/skillhub)
+
 Self-hosted agent skill registry. Publish, version, and distribute agent skills across your organization — with a Web UI, REST API, and CLI client built on the [ClawHub](https://github.com/openclaw/clawhub) protocol. Ideal for enterprises building their own internal agent skill registry.
 
 [English](README.md) | [中文](README_CN.md)
@@ -8,57 +11,57 @@ Self-hosted agent skill registry. Publish, version, and distribute agent skills 
 
 - **Own your data** — Run on your infrastructure. No vendor lock-in, no external dependencies.
 - **Single binary** — One Go binary serves the registry, Web UI, and CLI. Deploy anywhere.
+- **Zero-dependency mode** — SQLite by default, no external services needed. PostgreSQL supported for production.
 - **Git-native versioning** — Every skill version is a Git commit in a bare repository. Full history, diffs, and rollbacks built in.
-- **Instant search** — Meilisearch-powered full-text search with typo tolerance across skill names, summaries, and tags.
+- **Instant search** — Embedded [Bleve](https://blevesearch.com/) full-text search across skill names, summaries, and tags.
 - **ClawHub compatible** — Implements the ClawHub registry protocol. Skills published to SkillHub work with any ClawHub-compatible client.
 - **Webhook import** — Push to GitHub/GitLab/Gitea and skills are auto-imported and published.
 - **Auth & RBAC** — bcrypt password authentication, scoped API tokens, role-based access control (admin / moderator / user).
 
 ## Quick Start
 
-### Docker Compose (Recommended)
+### Single Binary (Simplest)
+
+Prerequisites: Go 1.25+, Node.js 22+
 
 ```bash
 git clone https://github.com/cinience/skillhub.git
 cd skillhub
-make docker-up
-```
-
-This starts PostgreSQL, Meilisearch, and SkillHub in one command. An admin user (`admin` / `admin123`) is created automatically on first boot.
-
-Customize admin credentials:
-
-```bash
-SKILLHUB_ADMIN_USER=myname SKILLHUB_ADMIN_PASSWORD=secret make docker-up
-```
-
-Open http://localhost:8080.
-
-### Local Development
-
-Prerequisites: Go 1.25+, Docker
-
-```bash
-# One command: start deps + build + create admin + start server
 make quickstart ADMIN_USER=admin ADMIN_PASSWORD=admin123
 ```
 
-Or step by step:
+This builds the binary (frontend + backend), creates an admin user, and starts the server using SQLite — no Docker or external databases needed.
+
+Open http://localhost:10070.
+
+### Docker Compose (Production)
 
 ```bash
-make deps-up                                        # Start PostgreSQL + Meilisearch
-make setup ADMIN_USER=admin ADMIN_PASSWORD=admin123  # Build + create admin
-make dev                                             # Start server on :8080
+git clone https://github.com/cinience/skillhub.git
+cd skillhub
+SKILLHUB_ADMIN_PASSWORD=secret make docker-up
 ```
 
-### Single Binary
+This starts PostgreSQL and SkillHub in one command. An admin user is created automatically on first boot.
+
+Open http://localhost:10070.
+
+### Step by Step
 
 ```bash
-go build -o skillhub ./cmd/skillhub/
+make setup ADMIN_USER=admin ADMIN_PASSWORD=admin123  # Build + create admin
+make dev                                             # Start server on :10070
+```
 
-SKILLHUB_ADMIN_USER=admin \
-SKILLHUB_ADMIN_PASSWORD=admin123 \
-./skillhub serve
+### PostgreSQL Mode (Optional)
+
+By default SkillHub uses SQLite. To use PostgreSQL instead:
+
+```bash
+make pg-up   # Start PostgreSQL via Docker
+SKILLHUB_DB_DRIVER=postgres \
+SKILLHUB_DATABASE_URL='postgres://skillhub:skillhub@localhost:5432/skillhub?sslmode=disable' \
+make dev
 ```
 
 The server auto-runs migrations and creates the admin user on first startup. Subsequent restarts are idempotent.
@@ -103,9 +106,9 @@ Skills are installed to `~/.skillhub/skills/` by default. Customize via `skills_
 ```mermaid
 graph LR
     subgraph Clients
-        W["🌐 Web UI"]
-        C["⌨️ CLI"]
-        A["🤖 AI Agents"]
+        W["Web UI"]
+        C["CLI"]
+        A["AI Agents"]
     end
 
     subgraph SkillHub["SkillHub Server"]
@@ -117,12 +120,12 @@ graph LR
 
     subgraph Storage
         G[("Git<br/>Repos")]
-        M[("Meili<br/>Search")]
-        P[("Postgres<br/>DB")]
+        B[("Bleve<br/>Search")]
+        D[("SQLite /<br/>Postgres")]
     end
 
     W & C & A --> R
-    S --> G & M & P
+    S --> G & B & D
 ```
 
 ## Project Structure
@@ -139,13 +142,13 @@ skillhub/
 │   ├── handler/             # HTTP handlers (skill, auth, search, admin, web UI)
 │   ├── middleware/          # Auth, rate limiting, request ID, logging
 │   ├── model/               # Domain models (User, Skill, Version, Token, Star)
-│   ├── repository/          # PostgreSQL repositories (sqlx)
-│   ├── search/              # Meilisearch integration
+│   ├── repository/          # Database repositories (GORM)
+│   ├── search/              # Bleve full-text search integration
 │   ├── server/              # Server bootstrap, routing, auto-setup
 │   └── service/             # Business logic (publish, download, versioning)
-├── migrations/              # SQL migration files (golang-migrate)
 ├── configs/                 # Default config (skillhub.yaml)
-├── web/templates/           # Server-rendered HTML (Go templates)
+├── web/                     # React frontend (Vite + TypeScript + i18n)
+├── web/templates/           # Server-rendered HTML fallback (Go templates)
 ├── deployments/docker/      # Dockerfile + docker-compose.yml
 ├── Makefile
 └── go.mod
@@ -157,12 +160,11 @@ Configuration is loaded from `configs/skillhub.yaml` with environment variable o
 
 | Variable | Description | Default |
 |---|---|---|
-| `SKILLHUB_PORT` | Server port | `8080` |
+| `SKILLHUB_PORT` | Server port | `10070` |
 | `SKILLHUB_HOST` | Bind address | `0.0.0.0` |
-| `SKILLHUB_BASE_URL` | Public URL | `http://localhost:8080` |
-| `SKILLHUB_DATABASE_URL` | PostgreSQL connection string | `postgres://skillhub:skillhub@localhost:5432/skillhub?sslmode=disable` |
-| `SKILLHUB_MEILI_URL` | Meilisearch URL | `http://localhost:7700` |
-| `SKILLHUB_MEILI_KEY` | Meilisearch API key | _(empty)_ |
+| `SKILLHUB_BASE_URL` | Public URL | `http://localhost:10070` |
+| `SKILLHUB_DB_DRIVER` | Database driver | `sqlite` |
+| `SKILLHUB_DATABASE_URL` | Database connection string | `./data/skillhub.db` |
 | `SKILLHUB_GIT_PATH` | Git storage path | `./data/repos` |
 | `SKILLHUB_ADMIN_USER` | Auto-create admin on startup | _(empty)_ |
 | `SKILLHUB_ADMIN_PASSWORD` | Admin password | _(empty)_ |
@@ -173,14 +175,14 @@ Configuration is loaded from `configs/skillhub.yaml` with environment variable o
 The CLI client stores its config in `~/.skillhub/config.yaml`:
 
 ```yaml
-registry: http://localhost:8080    # Registry server URL
-token: clh_xxxxxxxxxxxx            # API token (set via `skillhub login`)
-skills_dir: ~/.skillhub/skills    # Skill install directory (optional)
+registry: http://localhost:10070  # Registry server URL
+token: clh_xxxxxxxxxxxx           # API token (set via `skillhub login`)
+skills_dir: ~/.skillhub/skills   # Skill install directory (optional)
 ```
 
 | Field | Description | Default |
 |---|---|---|
-| `registry` | Registry server URL | `http://localhost:8080` |
+| `registry` | Registry server URL | `http://localhost:10070` |
 | `token` | API token for authentication | _(set via `skillhub login`)_ |
 | `skills_dir` | Local skill install directory | `~/.skillhub/skills` |
 
@@ -237,13 +239,20 @@ skills_dir: ~/.skillhub/skills    # Skill install directory (optional)
 |---|---|
 | Language | Go 1.25 |
 | Web Framework | [Gin](https://github.com/gin-gonic/gin) |
-| Database | PostgreSQL 17 + [sqlx](https://github.com/jmoiron/sqlx) |
-| Migrations | [golang-migrate](https://github.com/golang-migrate/migrate) |
-| Search | [Meilisearch](https://www.meilisearch.com/) |
+| Frontend | React 19 + Vite + TypeScript |
+| Database | SQLite (default) / PostgreSQL 17 via [GORM](https://gorm.io/) |
+| Search | [Bleve](https://blevesearch.com/) (embedded full-text search) |
 | Git Storage | [go-git](https://github.com/go-git/go-git) |
 | Auth | bcrypt + HMAC tokens |
-| Versioning | [Semantic Versioning](https://semver.org/) via [semver](https://github.com/Masterminds/semver) |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding guidelines, and PR process.
+
+## Security
+
+To report a security vulnerability, please see [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)
