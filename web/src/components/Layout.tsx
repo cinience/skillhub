@@ -24,7 +24,6 @@ export default function Layout() {
           </Link>
           <nav className="nav">
             <Link to="/skills">{t('nav.skills')}</Link>
-            <Link to="/search">{t('nav.search')}</Link>
             <Link to="/publish">{t('nav.publish')}</Link>
             {user ? (
               <>

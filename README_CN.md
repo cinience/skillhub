@@ -134,7 +134,7 @@ graph LR
 skillhub/
 ├── cmd/skillhub/           # 入口 — 服务端 + CLI 路由
 │   └── main.go
-├── internal/
+├── pkg/
 │   ├── auth/                # bcrypt 密码、HMAC API Token、会话管理
 │   ├── cli/                 # CLI 客户端（配置、HTTP 客户端、命令、输出格式化）
 │   ├── config/              # YAML 配置 + 环境变量覆盖

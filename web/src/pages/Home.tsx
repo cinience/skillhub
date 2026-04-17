@@ -10,21 +10,22 @@ export default function Home() {
   const [skills, setSkills] = useState<Skill[]>([]);
 
   useEffect(() => {
-    listSkills(6, '', 'downloads').then(r => setSkills(r.skills || [])).catch(e => console.error('Failed to load skills:', e));
+    listSkills(12, '', 'downloads').then(r => setSkills(r.data || [])).catch(e => console.error('Failed to load skills:', e));
   }, []);
 
   return (
     <>
-      <section style={{ textAlign: 'center', padding: '80px 0 48px' }}>
+      <section className="hero-section">
+        <div className="hero-glow" />
         <div className="container">
-          <h1 style={{ fontSize: '3rem', fontWeight: 800, marginBottom: 16 }} className="hero-title">
-            {t('index.hero_title_1')}<br />
-            <span style={{ color: 'var(--accent)' }}>{t('index.hero_title_2')}</span>
+          <h1 className="hero-title">
+            <span className="hero-line-1">{t('index.hero_title_1')}</span>
+            <span className="hero-line-2">{t('index.hero_title_2')}</span>
           </h1>
-          <p style={{ fontSize: '1.15rem', color: 'var(--text-secondary)', maxWidth: 560, margin: '0 auto 32px' }}>
+          <p className="hero-subtitle">
             {t('index.hero_subtitle')}
           </p>
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <div className="hero-actions">
             <Link to="/skills" className="btn btn-primary">{t('index.browse')}</Link>
             <Link to="/publish" className="btn btn-secondary">{t('index.publish')}</Link>
           </div>

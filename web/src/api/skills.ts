@@ -24,7 +24,7 @@ export interface SkillVersion {
 }
 
 export interface SkillListResponse {
-  skills: Skill[];
+  data: Skill[];
   nextCursor: string;
 }
 
@@ -34,7 +34,7 @@ export function listSkills(limit = 20, cursor = '', sort = 'created'): Promise<S
   return apiFetch(`/skills?${params}`);
 }
 
-export function getSkill(slug: string): Promise<{ skill: Skill }> {
+export function getSkill(slug: string): Promise<Skill> {
   return apiFetch(`/skills/${slug}`);
 }
 

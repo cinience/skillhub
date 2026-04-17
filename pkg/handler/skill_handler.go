@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,9 @@ func (h *SkillHandler) List(c *gin.Context) {
 	cursor := c.Query("cursor")
 	sort := c.DefaultQuery("sort", "created")
 	limit := 20
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
 
 	skills, nextCursor, err := h.svc.ListSkills(c.Request.Context(), limit, cursor, sort)
 	if err != nil {

@@ -29,7 +29,8 @@ export default function SkillCard({ slug, displayName, summary, tags, ownerHandl
         <div className="card-summary">{summary || t('common.no_description')}</div>
         {tags && tags.length > 0 && (
           <div className="card-tags">
-            {tags.map(tag => <span className="tag" key={tag}>{tag}</span>)}
+            {tags.slice(0, 3).map(tag => <span className="tag" key={tag}>{tag}</span>)}
+            {tags.length > 3 && <span className="tag">+{tags.length - 3}</span>}
           </div>
         )}
         <div className="card-meta">

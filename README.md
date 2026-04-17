@@ -134,7 +134,7 @@ graph LR
 skillhub/
 ├── cmd/skillhub/           # Entry point — server + CLI routing
 │   └── main.go
-├── internal/
+├── pkg/
 │   ├── auth/                # bcrypt passwords, HMAC API tokens, sessions
 │   ├── cli/                 # CLI client (config, HTTP client, commands, output)
 │   ├── config/              # YAML config + environment variable overrides

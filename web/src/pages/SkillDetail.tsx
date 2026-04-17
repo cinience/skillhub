@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { marked } from 'marked';
 import { getSkill, getVersions, getFile, type Skill, type SkillVersion } from '../api/skills';
 import CodeBlock from '../components/CodeBlock';
+
+marked.setOptions({ breaks: true, gfm: true });
+
+function stripFrontmatter(text: string): string {
+  const match = text.match(/^---\s*\n[\s\S]*?\n---\s*\n/);
+  return match ? text.slice(match[0].length) : text;
+}
 
 export default function SkillDetail() {
   const { t } = useTranslation();
@@ -15,7 +23,7 @@ export default function SkillDetail() {
   useEffect(() => {
     if (!slug) return;
     getSkill(slug)
-      .then(r => setSkill(r.skill))
+      .then(r => setSkill(r))
       .catch(() => setNotFound(true));
     getVersions(slug)
       .then(r => setVersions(r.versions || []))
@@ -25,9 +33,7 @@ export default function SkillDetail() {
       .then(async res => {
         if (!res.ok) return;
         const text = await res.text();
-        // Simple markdown-to-html: just render as pre-formatted for now
-        // The server could provide rendered HTML via an endpoint if needed
-        setMdHtml(text);
+        setMdHtml(stripFrontmatter(text));
       })
       .catch(e => console.error('Failed to load skill data:', e));
   }, [slug]);
@@ -81,9 +87,7 @@ export default function SkillDetail() {
         <div className="detail-layout">
           <div>
             {mdHtml ? (
-              <div className="markdown-body">
-                <pre style={{ whiteSpace: 'pre-wrap', background: 'transparent', border: 'none', padding: 0 }}>{mdHtml}</pre>
-              </div>
+              <div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(mdHtml) as string }} />
             ) : (
               <div style={{ color: 'var(--text-muted)', padding: '40px 0', textAlign: 'center' }}>
                 {t('detail.no_content')}

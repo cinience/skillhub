@@ -16,13 +16,13 @@ type Skill struct {
 	ModerationStatus string       `gorm:"column:moderation_status;type:varchar(20);not null;default:'approved'" json:"moderationStatus"`
 	IsSuspicious     bool         `gorm:"column:is_suspicious;not null;default:false" json:"isSuspicious"`
 	Tags             StringArray  `gorm:"column:tags;type:text;not null;default:'[]'" json:"tags"`
-	Downloads        int64        `gorm:"column:downloads;not null;default:0" json:"downloads"`
+	Downloads        int64        `gorm:"column:downloads;not null;default:0;index" json:"downloads"`
 	Installs         int64        `gorm:"column:installs;not null;default:0" json:"installs"`
-	StarsCount       int          `gorm:"column:stars_count;not null;default:0" json:"starsCount"`
+	StarsCount       int          `gorm:"column:stars_count;not null;default:0;index" json:"starsCount"`
 	VersionsCount    int          `gorm:"column:versions_count;not null;default:0" json:"versionsCount"`
 	CommentsCount    int          `gorm:"column:comments_count;not null;default:0" json:"commentsCount"`
-	CreatedAt        time.Time    `gorm:"column:created_at;autoCreateTime" json:"createdAt"`
-	UpdatedAt        time.Time    `gorm:"column:updated_at;autoUpdateTime" json:"updatedAt"`
+	CreatedAt        time.Time    `gorm:"column:created_at;autoCreateTime;index" json:"createdAt"`
+	UpdatedAt        time.Time    `gorm:"column:updated_at;autoUpdateTime;index" json:"updatedAt"`
 	SoftDeletedAt    *time.Time   `gorm:"column:soft_deleted_at;index" json:"softDeletedAt,omitempty"`
 }
 
