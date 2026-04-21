@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -23,7 +24,7 @@ func NewClient(cfg *CLIConfig) *Client {
 	return &Client{
 		BaseURL:    strings.TrimRight(cfg.Registry, "/"),
 		Token:      cfg.Token,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -127,7 +128,7 @@ func (c *Client) Download(slug, version string) (io.ReadCloser, error) {
 }
 
 // Publish calls POST /api/v1/skills with multipart form
-func (c *Client) Publish(slug, version, summary, tags, changelog string, files map[string][]byte) (map[string]interface{}, error) {
+func (c *Client) Publish(slug, version, summary, tags, changelog, category string, files map[string][]byte) (map[string]interface{}, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
@@ -145,6 +146,9 @@ func (c *Client) Publish(slug, version, summary, tags, changelog string, files m
 	}
 	if changelog != "" {
 		writer.WriteField("changelog", changelog)
+	}
+	if category != "" {
+		writer.WriteField("category", category)
 	}
 
 	for name, content := range files {

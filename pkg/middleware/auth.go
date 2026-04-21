@@ -109,21 +109,24 @@ func RequireScope(allowedScopes ...string) gin.HandlerFunc {
 				return
 			}
 		case "publish":
-			if method != "GET" && method != "HEAD" && method != "POST" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "token scope 'publish' does not allow this method"})
-				c.Abort()
-				return
+			if method != "GET" && method != "HEAD" {
+				if method != "POST" {
+					c.JSON(http.StatusForbidden, gin.H{"error": "token scope 'publish' does not allow this method"})
+					c.Abort()
+					return
+				}
+				// Restrict POST to skill publish/star routes only
+				path := c.FullPath()
+				if path != "/api/v1/skills" && path != "/api/v1/stars/:slug" {
+					c.JSON(http.StatusForbidden, gin.H{"error": "token scope 'publish' only allows publishing skills"})
+					c.Abort()
+					return
+				}
 			}
 		}
 
 		c.Next()
 	}
-}
-
-// WebOptionalAuth is an alias for OptionalAuth, used on web routes.
-// It reads from both Authorization header and session_token cookie.
-func WebOptionalAuth(authSvc *auth.Service) gin.HandlerFunc {
-	return OptionalAuth(authSvc)
 }
 
 // GetUser retrieves the authenticated user from the context.

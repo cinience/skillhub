@@ -21,11 +21,13 @@ import (
 	"github.com/cinience/skillhub/pkg/repository"
 	"github.com/cinience/skillhub/pkg/search"
 	"github.com/cinience/skillhub/pkg/store"
+	"gorm.io/gorm"
 )
 
 var semverRe = regexp.MustCompile(`^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$`)
 
 type SkillService struct {
+	db           *gorm.DB
 	skillRepo    *repository.SkillRepo
 	versionRepo  *repository.VersionRepo
 	userRepo     *repository.UserRepo
@@ -38,6 +40,7 @@ type SkillService struct {
 }
 
 func NewSkillService(
+	db *gorm.DB,
 	skillRepo *repository.SkillRepo,
 	versionRepo *repository.VersionRepo,
 	userRepo *repository.UserRepo,
@@ -49,6 +52,7 @@ func NewSkillService(
 	auditSvc *AuditService,
 ) *SkillService {
 	return &SkillService{
+		db:           db,
 		skillRepo:    skillRepo,
 		versionRepo:  versionRepo,
 		userRepo:     userRepo,
@@ -67,6 +71,7 @@ type PublishRequest struct {
 	Changelog   string
 	DisplayName string
 	Summary     string
+	Category    string
 	Tags        []string
 	Files       map[string][]byte // path → content
 }
@@ -98,10 +103,18 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 
 	if skill == nil {
 		// Create new skill (default private)
+		category := req.Category
+		if category == "" {
+			category = "general"
+		}
+		if !model.IsValidCategory(category) {
+			return nil, nil, fmt.Errorf("invalid category '%s'", category)
+		}
 		newSkill := &model.Skill{
 			ID:               uuid.New(),
 			Slug:             req.Slug,
 			OwnerID:          user.ID,
+			Category:         category,
 			Tags:             model.StringArray(req.Tags),
 			Visibility:       "private",
 			ModerationStatus: "approved",
@@ -199,27 +212,47 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 		ver.Changelog = &req.Changelog
 	}
 
-	if err := s.versionRepo.Create(ctx, ver); err != nil {
-		return nil, nil, fmt.Errorf("create version: %w", err)
-	}
-
-	// Update skill
-	if err := s.skillRepo.UpdateLatestVersion(ctx, skill.ID, ver.ID); err != nil {
-		return nil, nil, fmt.Errorf("update latest version: %w", err)
-	}
-
-	// Update display name and summary if provided
-	if req.DisplayName != "" || req.Summary != "" || len(req.Tags) > 0 {
-		if req.DisplayName != "" {
-			skill.DisplayName = &req.DisplayName
+	// Wrap DB writes in a transaction for atomicity
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(ver).Error; err != nil {
+			return fmt.Errorf("create version: %w", err)
 		}
-		if req.Summary != "" {
-			skill.Summary = &req.Summary
+		if err := tx.Model(&model.Skill{}).Where("id = ?", skill.ID).
+			Updates(map[string]interface{}{
+				"latest_version_id": ver.ID,
+				"versions_count":    gorm.Expr("versions_count + 1"),
+				"updated_at":        ver.CreatedAt,
+			}).Error; err != nil {
+			return fmt.Errorf("update latest version: %w", err)
 		}
-		if len(req.Tags) > 0 {
-			skill.Tags = model.StringArray(req.Tags)
+		// Update metadata if provided
+		if req.DisplayName != "" || req.Summary != "" || req.Category != "" || len(req.Tags) > 0 {
+			updates := map[string]interface{}{}
+			if req.DisplayName != "" {
+				skill.DisplayName = &req.DisplayName
+				updates["display_name"] = req.DisplayName
+			}
+			if req.Summary != "" {
+				skill.Summary = &req.Summary
+				updates["summary"] = req.Summary
+			}
+			if req.Category != "" && model.IsValidCategory(req.Category) {
+				skill.Category = req.Category
+				updates["category"] = req.Category
+			}
+			if len(req.Tags) > 0 {
+				skill.Tags = model.StringArray(req.Tags)
+				updates["tags"] = skill.Tags
+			}
+			if len(updates) > 0 {
+				if err := tx.Model(&model.Skill{}).Where("id = ?", skill.ID).Updates(updates).Error; err != nil {
+					return fmt.Errorf("update skill metadata: %w", err)
+				}
+			}
 		}
-		s.skillRepo.Update(ctx, &skill.Skill)
+		return nil
+	}); err != nil {
+		return nil, nil, err
 	}
 
 	// Index to search
@@ -234,6 +267,7 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 			DisplayName:      derefStr(skill.DisplayName),
 			Summary:          derefStr(skill.Summary),
 			SkillMdContent:   skillMdContent,
+			Category:         skill.Category,
 			Tags:             []string(skill.Tags),
 			OwnerHandle:      skill.OwnerHandle,
 			Visibility:       skill.Visibility,
@@ -322,7 +356,11 @@ func (s *SkillService) Download(ctx context.Context, slug, version string, ident
 }
 
 // GetFile reads a single file from a skill version.
-func (s *SkillService) GetFile(ctx context.Context, slug, version, path string, viewer *model.User) ([]byte, error) {
+func (s *SkillService) GetFile(ctx context.Context, slug, version, filePath string, viewer *model.User) ([]byte, error) {
+	cleanPath := sanitizeFilePath(filePath)
+	if cleanPath == "" {
+		return nil, fmt.Errorf("invalid file path")
+	}
 	skill, err := s.skillRepo.GetBySlugOrAlias(ctx, slug)
 	if err != nil {
 		return nil, err
@@ -345,7 +383,7 @@ func (s *SkillService) GetFile(ctx context.Context, slug, version, path string, 
 		version = v.Version
 	}
 
-	content, err := s.fileStore.GetFile(skill.OwnerHandle, slug, version, path)
+	content, err := s.fileStore.GetFile(skill.OwnerHandle, slug, version, cleanPath)
 	if err != nil {
 		return nil, err
 	}
@@ -357,13 +395,22 @@ func (s *SkillService) GetFile(ctx context.Context, slug, version, path string, 
 	return content, nil
 }
 
-// ResolveFingerprint finds a version by its fingerprint.
+// ResolveFingerprint finds a version by its fingerprint and returns the associated skill.
 func (s *SkillService) ResolveFingerprint(ctx context.Context, fingerprint string) (*model.SkillVersion, *model.SkillWithOwner, error) {
 	ver, err := s.versionRepo.GetByFingerprint(ctx, fingerprint)
 	if err != nil || ver == nil {
 		return nil, nil, err
 	}
-	return ver, nil, nil
+	skill, err := s.skillRepo.GetByID(ctx, ver.SkillID)
+	if err != nil || skill == nil {
+		return ver, nil, err
+	}
+	owner, _ := s.userRepo.GetByID(ctx, skill.OwnerID)
+	swo := &model.SkillWithOwner{Skill: *skill}
+	if owner != nil {
+		swo.OwnerHandle = owner.Handle
+	}
+	return ver, swo, nil
 }
 
 // GetSkill returns a skill by slug with visibility check.
@@ -380,11 +427,11 @@ func (s *SkillService) GetSkill(ctx context.Context, slug string, viewer *model.
 }
 
 // ListSkills returns a paginated list of skills with visibility filtering.
-func (s *SkillService) ListSkills(ctx context.Context, limit int, cursor, sort string, viewer *model.User) ([]model.SkillWithOwner, string, error) {
+func (s *SkillService) ListSkills(ctx context.Context, limit int, cursor, sort, category string, viewer *model.User) ([]model.SkillWithOwner, string, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	filter := repository.ListFilter{}
+	filter := repository.ListFilter{Category: category}
 	if viewer != nil {
 		filter.ViewerID = &viewer.ID
 		filter.IsAdmin = viewer.IsModerator()
@@ -571,7 +618,10 @@ func (s *SkillService) Unstar(ctx context.Context, userID uuid.UUID, slug string
 	return s.skillRepo.UpdateStarsCount(ctx, skill.ID, -1)
 }
 
-const maxUploadFiles = 500
+const (
+	maxUploadFiles   = 500
+	maxFileSize      = 5 * 1024 * 1024 // 5MB per file
+)
 
 // ReadMultipartFiles reads all files from a multipart form.
 func ReadMultipartFiles(form *multipart.Form) (map[string][]byte, error) {
@@ -581,6 +631,9 @@ func ReadMultipartFiles(form *multipart.Form) (map[string][]byte, error) {
 			if len(files) >= maxUploadFiles {
 				return nil, fmt.Errorf("too many files (max %d)", maxUploadFiles)
 			}
+			if header.Size > maxFileSize {
+				return nil, fmt.Errorf("file %s exceeds max size (%d bytes)", header.Filename, maxFileSize)
+			}
 			name := sanitizeFilePath(header.Filename)
 			if name == "" {
 				continue
@@ -589,10 +642,13 @@ func ReadMultipartFiles(form *multipart.Form) (map[string][]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("open file %s: %w", name, err)
 			}
-			data, err := io.ReadAll(f)
+			data, err := io.ReadAll(io.LimitReader(f, maxFileSize+1))
 			f.Close()
 			if err != nil {
 				return nil, fmt.Errorf("read file %s: %w", name, err)
+			}
+			if int64(len(data)) > maxFileSize {
+				return nil, fmt.Errorf("file %s exceeds max size (%d bytes)", name, maxFileSize)
 			}
 			files[name] = data
 		}

@@ -30,7 +30,7 @@ type mockSkillService struct {
 	getVersionFn   func(ctx context.Context, slug, version string) (*model.SkillVersion, error)
 }
 
-func (m *mockSkillService) ListSkills(ctx context.Context, limit int, cursor, sort string, _ *model.User) ([]model.SkillWithOwner, string, error) {
+func (m *mockSkillService) ListSkills(ctx context.Context, limit int, cursor, sort, category string, _ *model.User) ([]model.SkillWithOwner, string, error) {
 	if m.listSkillsFn != nil {
 		return m.listSkillsFn(ctx, limit, cursor, sort)
 	}

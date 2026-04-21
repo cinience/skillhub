@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"io"
+	"path"
+	"strings"
 )
 
 // Store is the abstraction for skill file storage backends (git, S3, OSS, etc.).
@@ -25,6 +27,17 @@ type Store interface {
 
 	// Rename renames skill storage from oldSlug to newSlug.
 	Rename(owner, oldSlug, newSlug string) error
+}
+
+// sanitizeStorePath cleans a file path to prevent directory traversal in storage keys.
+func sanitizeStorePath(p string) string {
+	p = path.Clean(p)
+	p = strings.TrimPrefix(p, "/")
+	// Reject any remaining traversal
+	if p == ".." || strings.HasPrefix(p, "../") || strings.Contains(p, "/../") {
+		return "invalid"
+	}
+	return p
 }
 
 // PublishOpts contains backend-agnostic parameters for publishing a skill version.

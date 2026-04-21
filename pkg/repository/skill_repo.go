@@ -80,6 +80,7 @@ func (r *SkillRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Skill, er
 type ListFilter struct {
 	ViewerID *uuid.UUID // nil = anonymous
 	IsAdmin  bool       // admin/moderator sees all
+	Category string     // filter by category (empty = all)
 }
 
 func (r *SkillRepo) List(ctx context.Context, limit int, cursor string, sort string, filter ListFilter) ([]model.SkillWithOwner, string, error) {
@@ -111,9 +112,24 @@ func (r *SkillRepo) List(ctx context.Context, limit int, cursor string, sort str
 		q = q.Where("skills.visibility = 'public' AND skills.moderation_status = 'approved'")
 	}
 
+	if filter.Category != "" {
+		q = q.Where("skills.category = ?", filter.Category)
+	}
+
 	if cursor != "" {
-		// Cursor is the last item's ID — use subquery to get its position
-		q = q.Where("skills.created_at <= (SELECT created_at FROM skills WHERE id = ?) AND skills.id != ?", cursor, cursor)
+		// Cursor comparison must match the sort column
+		switch sort {
+		case "downloads":
+			q = q.Where("(skills.downloads, skills.id) < (SELECT downloads, id FROM skills WHERE id = ?)", cursor)
+		case "stars":
+			q = q.Where("(skills.stars_count, skills.id) < (SELECT stars_count, id FROM skills WHERE id = ?)", cursor)
+		case "updated":
+			q = q.Where("(skills.updated_at, skills.id) < (SELECT updated_at, id FROM skills WHERE id = ?)", cursor)
+		case "name":
+			q = q.Where("(skills.slug, skills.id) > (SELECT slug, id FROM skills WHERE id = ?)", cursor)
+		default: // "created"
+			q = q.Where("(skills.created_at, skills.id) < (SELECT created_at, id FROM skills WHERE id = ?)", cursor)
+		}
 	}
 
 	var skills []model.SkillWithOwner
@@ -196,10 +212,15 @@ func (r *SkillRepo) IncrementDownloads(ctx context.Context, skillID uuid.UUID) e
 }
 
 func (r *SkillRepo) UpdateStarsCount(ctx context.Context, skillID uuid.UUID, delta int) error {
+	expr := gorm.Expr("stars_count + ?", delta)
+	if delta < 0 {
+		// Prevent negative stars: use MAX(0, stars_count + delta)
+		expr = gorm.Expr("MAX(0, stars_count + ?)", delta)
+	}
 	return r.db.WithContext(ctx).
 		Model(&model.Skill{}).
 		Where("id = ?", skillID).
-		Update("stars_count", gorm.Expr("stars_count + ?", delta)).Error
+		Update("stars_count", expr).Error
 }
 
 func (r *SkillRepo) UpdateRatingStats(ctx context.Context, skillID uuid.UUID, avg float64, count int) error {
@@ -246,6 +267,7 @@ func (r *SkillRepo) Update(ctx context.Context, skill *model.Skill) error {
 		Updates(map[string]interface{}{
 			"display_name": skill.DisplayName,
 			"summary":      skill.Summary,
+			"category":     skill.Category,
 			"tags":         skill.Tags,
 			"updated_at":   time.Now(),
 		}).Error

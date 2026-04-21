@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { getSkill, getVersions, getFile, type Skill, type SkillVersion } from '../api/skills';
 import CodeBlock from '../components/CodeBlock';
 import { formatDisplayName } from '../utils/displayName';
@@ -91,7 +92,7 @@ export default function SkillDetail() {
         <div className="detail-layout">
           <div>
             {mdHtml ? (
-              <div className="markdown-body" dangerouslySetInnerHTML={{ __html: marked.parse(mdHtml) as string }} />
+              <div className="markdown-body" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(mdHtml) as string) }} />
             ) : (
               <div style={{ color: 'var(--text-muted)', padding: '40px 0', textAlign: 'center' }}>
                 {t('detail.no_content')}

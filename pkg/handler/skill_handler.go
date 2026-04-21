@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,10 +28,12 @@ func (h *SkillHandler) List(c *gin.Context) {
 		limit = l
 	}
 
+	category := c.Query("category")
 	viewer := middleware.GetUser(c)
-	skills, nextCursor, err := h.svc.ListSkills(c.Request.Context(), limit, cursor, sort, viewer)
+	skills, nextCursor, err := h.svc.ListSkills(c.Request.Context(), limit, cursor, sort, category, viewer)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("ListSkills error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 
@@ -46,7 +49,8 @@ func (h *SkillHandler) Get(c *gin.Context) {
 	viewer := middleware.GetUser(c)
 	skill, err := h.svc.GetSkill(c.Request.Context(), slug, viewer)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("GetSkill error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 	if skill == nil {
@@ -81,6 +85,7 @@ func (h *SkillHandler) Publish(c *gin.Context) {
 		Changelog:   c.PostForm("changelog"),
 		DisplayName: c.PostForm("displayName"),
 		Summary:     c.PostForm("summary"),
+		Category:    c.PostForm("category"),
 		Files:       files,
 	}
 	if tags := c.PostForm("tags"); tags != "" {
@@ -139,7 +144,8 @@ func (h *SkillHandler) Versions(c *gin.Context) {
 	viewer := middleware.GetUser(c)
 	versions, err := h.svc.GetVersions(c.Request.Context(), slug, viewer)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("GetVersions error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": versions})
@@ -201,27 +207,13 @@ func (h *SkillHandler) RequestPublic(c *gin.Context) {
 
 func splitTags(s string) []string {
 	var tags []string
-	for _, t := range splitAny(s, ",; ") {
-		t = trimSpace(t)
+	for _, t := range strings.FieldsFunc(s, func(r rune) bool {
+		return strings.ContainsRune(",; ", r)
+	}) {
+		t = strings.TrimSpace(t)
 		if t != "" {
 			tags = append(tags, t)
 		}
 	}
 	return tags
-}
-
-func splitAny(s string, seps string) []string {
-	return strings.FieldsFunc(s, func(r rune) bool {
-		return strings.ContainsRune(seps, r)
-	})
-}
-
-func trimSpace(s string) string {
-	for len(s) > 0 && (s[0] == ' ' || s[0] == '\t' || s[0] == '\n' || s[0] == '\r') {
-		s = s[1:]
-	}
-	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\t' || s[len(s)-1] == '\n' || s[len(s)-1] == '\r') {
-		s = s[:len(s)-1]
-	}
-	return s
 }

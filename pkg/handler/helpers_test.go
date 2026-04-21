@@ -31,35 +31,4 @@ func TestSplitTags(t *testing.T) {
 	}
 }
 
-func TestTrimSpace(t *testing.T) {
-	tests := []struct {
-		input, want string
-	}{
-		{"hello", "hello"},
-		{"  hello  ", "hello"},
-		{"\thello\t", "hello"},
-		{"\nhello\n", "hello"},
-		{"  ", ""},
-		{"", ""},
-	}
-	for _, tt := range tests {
-		got := trimSpace(tt.input)
-		if got != tt.want {
-			t.Errorf("trimSpace(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
-func TestSplitAny(t *testing.T) {
-	got := splitAny("a,b;c d", ",; ")
-	want := []string{"a", "b", "c", "d"}
-	if len(got) != len(want) {
-		t.Fatalf("splitAny() = %v, want %v", got, want)
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			t.Errorf("splitAny()[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
 

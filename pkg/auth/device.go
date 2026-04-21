@@ -88,13 +88,6 @@ type DeviceCodeResponse struct {
 
 // CreateCode generates a new device code and user code.
 func (s *DeviceAuthService) CreateCode() (*DeviceCodeResponse, error) {
-	s.mu.Lock()
-	if len(s.entries) >= maxActiveCodes {
-		s.mu.Unlock()
-		return nil, fmt.Errorf("too many active device codes, try again later")
-	}
-	s.mu.Unlock()
-
 	deviceCode, err := randomDeviceCode()
 	if err != nil {
 		return nil, err
@@ -112,6 +105,10 @@ func (s *DeviceAuthService) CreateCode() (*DeviceCodeResponse, error) {
 	}
 
 	s.mu.Lock()
+	if len(s.entries) >= maxActiveCodes {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("too many active device codes, try again later")
+	}
 	s.entries[deviceCode] = entry
 	s.byCodes[userCode] = deviceCode
 	s.mu.Unlock()

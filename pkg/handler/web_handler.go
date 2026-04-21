@@ -53,7 +53,7 @@ func formatTemplateDisplayName(raw any, fallback any, maxLength int) (string, st
 
 // WebSkillService defines the skill operations needed by the web UI.
 type WebSkillService interface {
-	ListSkills(ctx context.Context, limit int, cursor, sort string, viewer *model.User) ([]model.SkillWithOwner, string, error)
+	ListSkills(ctx context.Context, limit int, cursor, sort, category string, viewer *model.User) ([]model.SkillWithOwner, string, error)
 	GetSkill(ctx context.Context, slug string, viewer *model.User) (*model.SkillWithOwner, error)
 	GetVersions(ctx context.Context, slug string, viewer *model.User) ([]model.SkillVersion, error)
 	GetFile(ctx context.Context, slug, version, path string, viewer *model.User) ([]byte, error)
@@ -154,7 +154,7 @@ func (h *WebHandler) render(c *gin.Context, name string, data gin.H) {
 func (h *WebHandler) Index(c *gin.Context) {
 	ctx := c.Request.Context()
 	viewer := middleware.GetUser(c)
-	skills, _, _ := h.svc.ListSkills(ctx, 6, "", "downloads", viewer)
+	skills, _, _ := h.svc.ListSkills(ctx, 6, "", "downloads", "", viewer)
 
 	h.render(c, "index.html", gin.H{
 		"Title":  "",
@@ -169,7 +169,8 @@ func (h *WebHandler) Skills(c *gin.Context) {
 	cursor := c.Query("cursor")
 	viewer := middleware.GetUser(c)
 
-	skills, nextCursor, _ := h.svc.ListSkills(ctx, 20, cursor, sort, viewer)
+	category := c.Query("category")
+	skills, nextCursor, _ := h.svc.ListSkills(ctx, 20, cursor, sort, category, viewer)
 
 	h.render(c, "skills.html", gin.H{
 		"Title":      "Skills",

@@ -54,10 +54,16 @@ curl -s "$REGISTRY/api/v1/search?q=$ARGUMENTS" | jq '.hits[] | {slug, displayNam
 ## 3. List Skills
 
 ```bash
-curl -s "$REGISTRY/api/v1/skills?sort=downloads&limit=20" | jq '.data[] | {slug, displayName, downloads}'
+curl -s "$REGISTRY/api/v1/skills?sort=downloads&limit=20" | jq '.data[] | {slug, displayName, category, downloads}'
+```
+
+Filter by category:
+```bash
+curl -s "$REGISTRY/api/v1/skills?category=devops&sort=downloads" | jq '.data[] | {slug, displayName}'
 ```
 
 Sort options: `downloads`, `created`, `updated`, `stars`.
+Categories: `devops`, `security`, `data`, `frontend`, `backend`, `infra`, `testing`, `ai`, `general`.
 
 ## 4. Inspect a Skill
 
@@ -102,6 +108,7 @@ curl -s -X POST "$REGISTRY/api/v1/skills" \
   -H "Authorization: Bearer $TOKEN" \
   -F "slug=my-skill" \
   -F "version=1.0.0" \
+  -F "category=devops" \
   -F "summary=A brief description" \
   -F "tags=cli,automation" \
   -F "files=@./SKILL.md" \

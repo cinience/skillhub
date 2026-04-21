@@ -17,6 +17,7 @@ type Skill struct {
 	Visibility       string       `gorm:"column:visibility;type:varchar(20);not null;default:'private'" json:"visibility"`
 	ModerationStatus string       `gorm:"column:moderation_status;type:varchar(20);not null;default:'approved'" json:"moderationStatus"`
 	IsSuspicious     bool         `gorm:"column:is_suspicious;not null;default:false" json:"isSuspicious"`
+	Category         string       `gorm:"column:category;type:varchar(64);not null;default:'general';index" json:"category"`
 	Tags             StringArray  `gorm:"column:tags;type:text;not null;default:'[]'" json:"tags"`
 	Downloads        int64        `gorm:"column:downloads;not null;default:0;index" json:"downloads"`
 	Installs         int64        `gorm:"column:installs;not null;default:0" json:"installs"`
@@ -49,3 +50,19 @@ type SkillSlugAlias struct {
 }
 
 func (SkillSlugAlias) TableName() string { return "skill_slug_aliases" }
+
+// ValidCategories lists the allowed skill categories.
+var ValidCategories = []string{
+	"devops", "security", "data", "frontend", "backend",
+	"infra", "testing", "ai", "general",
+}
+
+// IsValidCategory checks if a category string is in the allowed list.
+func IsValidCategory(cat string) bool {
+	for _, c := range ValidCategories {
+		if c == cat {
+			return true
+		}
+	}
+	return false
+}

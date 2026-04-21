@@ -60,6 +60,7 @@ func NewOSSBackend(cfg OSSConfig) (*OSSBackend, error) {
 }
 
 func (b *OSSBackend) key(owner, slug, version, filePath string) string {
+	filePath = sanitizeStorePath(filePath)
 	return fmt.Sprintf("%s/%s/%s/versions/%s/files/%s", b.prefix, owner, slug, version, filePath)
 }
 

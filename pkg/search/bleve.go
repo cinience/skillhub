@@ -61,6 +61,7 @@ func buildMapping() mapping.IndexMapping {
 	skillMapping.AddFieldMappingsAt("ownerHandle", textField)
 
 	// Filterable keyword fields
+	skillMapping.AddFieldMappingsAt("category", keywordField)
 	skillMapping.AddFieldMappingsAt("visibility", keywordField)
 	skillMapping.AddFieldMappingsAt("moderationStatus", keywordField)
 	skillMapping.AddFieldMappingsAt("ownerHandleExact", keywordField)
@@ -86,6 +87,7 @@ type SkillDocument struct {
 	DisplayName      string   `json:"displayName"`
 	Summary          string   `json:"summary"`
 	SkillMdContent   string   `json:"skillMdContent"`
+	Category         string   `json:"category"`
 	Tags             []string `json:"tags"`
 	OwnerHandle      string   `json:"ownerHandle"`
 	OwnerHandleExact string   `json:"ownerHandleExact"`
@@ -177,6 +179,25 @@ func (c *Client) Search(ctx context.Context, query string, limit, offset int, so
 		}
 		searchReq = bleve.NewSearchRequestOptions(finalQuery, limit, offset, false)
 		searchReq.Fields = []string{"*"}
+		// Re-apply sort order (was set on original request which is now replaced)
+		if len(sort) > 0 {
+			var sortOrder bleveSearch.SortOrder
+			for _, s := range sort {
+				field := s
+				desc := false
+				if strings.HasSuffix(s, ":desc") {
+					field = strings.TrimSuffix(s, ":desc")
+					desc = true
+				} else if strings.HasSuffix(s, ":asc") {
+					field = strings.TrimSuffix(s, ":asc")
+				} else {
+					desc = true
+				}
+				sf := &bleveSearch.SortField{Field: field, Desc: desc, Type: bleveSearch.SortFieldAsNumber}
+				sortOrder = append(sortOrder, sf)
+			}
+			searchReq.SortByCustom(sortOrder)
+		}
 	}
 
 	result, err := c.index.Search(searchReq)

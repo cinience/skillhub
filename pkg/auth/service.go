@@ -140,8 +140,11 @@ func (s *Service) Login(ctx context.Context, handle, password string) (string, *
 	return rawToken, user, nil
 }
 
-// SetPassword sets a user's password hash.
+// SetPassword sets a user's password hash after validating complexity.
 func (s *Service) SetPassword(ctx context.Context, userID uuid.UUID, password string) error {
+	if len(password) < 8 {
+		return errors.New("password must be at least 8 characters")
+	}
 	hash, err := HashPassword(password)
 	if err != nil {
 		return err

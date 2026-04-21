@@ -16,6 +16,8 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource-variable/space-grotesk": "^5.2.10",
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.4.0",
     "i18next": "^26.0.3",
     "i18next-browser-languagedetector": "^8.2.1",
     "marked": "^18.0.1",

@@ -77,6 +77,7 @@ func NewS3Backend(cfg S3Config) (*S3Backend, error) {
 
 // key builds an S3 object key: {prefix}/{owner}/{slug}/versions/{version}/files/{path}
 func (b *S3Backend) key(owner, slug, version, filePath string) string {
+	filePath = sanitizeStorePath(filePath)
 	return fmt.Sprintf("%s/%s/%s/versions/%s/files/%s", b.prefix, owner, slug, version, filePath)
 }
 

@@ -456,16 +456,10 @@ func Update(args []string) {
 		json.Unmarshal(data, &meta)
 		currentVer := getStr(meta, "version")
 
-		// Check latest version from registry
-		skill, err := client.GetSkill(slug)
-		if err != nil {
-			fmt.Printf("  %s: failed to check (%v)\n", slug, err)
-			continue
-		}
-
 		// Get latest version info via versions endpoint
 		versions, err := client.GetVersions(slug)
 		if err != nil {
+			fmt.Printf("  %s: failed to check (%v)\n", slug, err)
 			continue
 		}
 		vList := getSlice(versions, "data")
@@ -479,7 +473,6 @@ func Update(args []string) {
 			continue
 		}
 		latestVer := getStr(latestMap, "version")
-		_ = skill
 
 		if latestVer == currentVer {
 			fmt.Printf("  %s: up to date (%s)\n", slug, currentVer)
@@ -510,6 +503,7 @@ func Publish(args []string) {
 	tags := getFlag(args[1:], "--tags")
 	summary := getFlag(args[1:], "--summary")
 	changelog := getFlag(args[1:], "--changelog")
+	category := getFlag(args[1:], "--category")
 
 	// Verify directory exists
 	info, err := os.Stat(dirPath)
@@ -548,7 +542,7 @@ func Publish(args []string) {
 	}
 	fmt.Printf("  Files: %d\n", len(files))
 
-	result, err := client.Publish(slug, version, summary, tags, changelog, files)
+	result, err := client.Publish(slug, version, summary, tags, changelog, category, files)
 	if err != nil {
 		exitWithError(err.Error())
 	}
@@ -584,6 +578,7 @@ Commands:
   publish <path> [flags]        Publish a skill to the registry
     --slug <slug>               Skill slug (or set 'name' in SKILL.md)
     --version <version>         Semantic version
+    --category <category>       Category (devops,security,data,frontend,backend,infra,testing,ai,general)
     --tags <tags>               Comma-separated tags
     --summary <text>            Short description
     --changelog <text>          Changelog for this version

@@ -114,7 +114,7 @@ func New(cfg *config.Config) (*Server, error) {
 	auditSvc := service.NewAuditService(auditRepo)
 
 	// Service
-	skillSvc := service.NewSkillService(skillRepo, versionRepo, userRepo, downloadRepo, starRepo, fileStore, searchClient, mirrorSvc, auditSvc)
+	skillSvc := service.NewSkillService(db, skillRepo, versionRepo, userRepo, downloadRepo, starRepo, fileStore, searchClient, mirrorSvc, auditSvc)
 
 	// Namespace
 	nsRepo := repository.NewNamespaceRepo(db)
@@ -170,14 +170,14 @@ func New(cfg *config.Config) (*Server, error) {
 	deviceRoutes.Use(rateLimiter.RateLimit("write"))
 	{
 		deviceRoutes.POST("/code", deviceHandler.RequestCode)
-		deviceRoutes.GET("/verify", middleware.WebOptionalAuth(authSvc), deviceHandler.VerifyPage)
+		deviceRoutes.GET("/verify", middleware.OptionalAuth(authSvc), deviceHandler.VerifyPage)
 		deviceRoutes.POST("/verify", middleware.RequireAuth(authSvc), deviceHandler.VerifySubmit)
 		deviceRoutes.POST("/token", deviceHandler.PollToken)
 	}
 
 	// Login/logout routes (server-side cookie management)
 	webRoutes := router.Group("")
-	webRoutes.Use(middleware.WebOptionalAuth(authSvc))
+	webRoutes.Use(middleware.OptionalAuth(authSvc))
 	{
 		webRoutes.POST("/login", rateLimiter.RateLimit("write"), webAuthHandler.LoginSubmit)
 		webRoutes.POST("/logout", webAuthHandler.Logout)
