@@ -204,6 +204,7 @@ main { flex: 1; }
   font-weight: 600;
   color: var(--text);
   margin-bottom: 6px;
+  overflow-wrap: anywhere;
 }
 .card-summary {
   font-size: 0.875rem;
@@ -560,6 +561,11 @@ main { flex: 1; }
   font-weight: 700;
   margin-bottom: 8px;
   letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 .detail-summary { font-family: var(--font-body), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; font-size: 1.05rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.7; }
 .detail-stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 20px; }

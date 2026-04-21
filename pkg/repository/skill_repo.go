@@ -76,7 +76,13 @@ func (r *SkillRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Skill, er
 	return &skill, err
 }
 
-func (r *SkillRepo) List(ctx context.Context, limit int, cursor string, sort string) ([]model.SkillWithOwner, string, error) {
+// ListFilter controls visibility filtering for skill listing.
+type ListFilter struct {
+	ViewerID *uuid.UUID // nil = anonymous
+	IsAdmin  bool       // admin/moderator sees all
+}
+
+func (r *SkillRepo) List(ctx context.Context, limit int, cursor string, sort string, filter ListFilter) ([]model.SkillWithOwner, string, error) {
 	orderClause := "skills.created_at DESC, skills.id"
 	switch sort {
 	case "downloads":
@@ -93,10 +99,21 @@ func (r *SkillRepo) List(ctx context.Context, limit int, cursor string, sort str
 		Table("skills").
 		Select("skills.*, users.handle AS owner_handle, users.display_name AS owner_display_name, users.avatar_url AS owner_avatar_url").
 		Joins("JOIN users ON skills.owner_id = users.id").
-		Where("skills.soft_deleted_at IS NULL AND skills.moderation_status = ?", "approved")
+		Where("skills.soft_deleted_at IS NULL")
+
+	if filter.IsAdmin {
+		// Admin sees all non-deleted skills
+	} else if filter.ViewerID != nil {
+		// Logged-in user: public+approved OR own skills
+		q = q.Where("(skills.visibility = 'public' AND skills.moderation_status = 'approved') OR skills.owner_id = ?", *filter.ViewerID)
+	} else {
+		// Anonymous: only public+approved
+		q = q.Where("skills.visibility = 'public' AND skills.moderation_status = 'approved'")
+	}
 
 	if cursor != "" {
-		q = q.Where("skills.id > ?", cursor)
+		// Cursor is the last item's ID — use subquery to get its position
+		q = q.Where("skills.created_at <= (SELECT created_at FROM skills WHERE id = ?) AND skills.id != ?", cursor, cursor)
 	}
 
 	var skills []model.SkillWithOwner
@@ -111,6 +128,53 @@ func (r *SkillRepo) List(ctx context.Context, limit int, cursor string, sort str
 		skills = skills[:limit]
 	}
 	return skills, nextCursor, nil
+}
+
+// ListAllForAdmin returns all skills for admin management, with optional visibility filter.
+func (r *SkillRepo) ListAllForAdmin(ctx context.Context, limit int, cursor string, visibility string) ([]model.SkillWithOwner, string, error) {
+	q := r.db.WithContext(ctx).
+		Table("skills").
+		Select("skills.*, users.handle AS owner_handle, users.display_name AS owner_display_name, users.avatar_url AS owner_avatar_url").
+		Joins("JOIN users ON skills.owner_id = users.id").
+		Where("skills.soft_deleted_at IS NULL")
+
+	switch visibility {
+	case "private":
+		q = q.Where("skills.visibility = 'private'")
+	case "public":
+		q = q.Where("skills.visibility = 'public'")
+	case "pending":
+		q = q.Where("skills.moderation_status = 'pending_review'")
+	}
+
+	if cursor != "" {
+		q = q.Where("skills.updated_at <= (SELECT updated_at FROM skills WHERE id = ?) AND skills.id != ?", cursor, cursor)
+	}
+
+	var skills []model.SkillWithOwner
+	err := q.Order("skills.updated_at DESC, skills.id").Limit(limit + 1).Find(&skills).Error
+	if err != nil {
+		return nil, "", err
+	}
+
+	var nextCursor string
+	if len(skills) > limit {
+		nextCursor = skills[limit].ID.String()
+		skills = skills[:limit]
+	}
+	return skills, nextCursor, nil
+}
+
+// SetVisibility updates a skill's visibility and moderation status.
+func (r *SkillRepo) SetVisibility(ctx context.Context, skillID uuid.UUID, visibility, moderationStatus string) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Skill{}).
+		Where("id = ?", skillID).
+		Updates(map[string]interface{}{
+			"visibility":        visibility,
+			"moderation_status": moderationStatus,
+			"updated_at":        time.Now(),
+		}).Error
 }
 
 func (r *SkillRepo) UpdateLatestVersion(ctx context.Context, skillID uuid.UUID, versionID uuid.UUID) error {
@@ -136,6 +200,16 @@ func (r *SkillRepo) UpdateStarsCount(ctx context.Context, skillID uuid.UUID, del
 		Model(&model.Skill{}).
 		Where("id = ?", skillID).
 		Update("stars_count", gorm.Expr("stars_count + ?", delta)).Error
+}
+
+func (r *SkillRepo) UpdateRatingStats(ctx context.Context, skillID uuid.UUID, avg float64, count int) error {
+	return r.db.WithContext(ctx).
+		Model(&model.Skill{}).
+		Where("id = ?", skillID).
+		Updates(map[string]interface{}{
+			"average_rating": avg,
+			"ratings_count":  count,
+		}).Error
 }
 
 func (r *SkillRepo) SoftDelete(ctx context.Context, skillID uuid.UUID) error {

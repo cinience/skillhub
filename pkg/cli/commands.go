@@ -186,6 +186,7 @@ func Inspect(args []string) {
 	printField("Downloads", getNum(skill, "downloads"))
 	printField("Stars", getNum(skill, "starsCount"))
 	printField("Versions", getNum(skill, "versionsCount"))
+	printField("Visibility", getStr(skill, "visibility"))
 	printField("Status", getStr(skill, "moderationStatus"))
 
 	if tags, ok := skill["tags"]; ok {

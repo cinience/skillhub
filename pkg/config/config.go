@@ -14,6 +14,7 @@ type Config struct {
 	Database  DatabaseConfig  `yaml:"database"`
 	Search    SearchConfig    `yaml:"search"`
 	GitStore  GitStoreConfig  `yaml:"gitstore"`
+	Store     StoreConfig     `yaml:"store"`
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
 	Auth      AuthConfig      `yaml:"auth"`
 }
@@ -39,6 +40,30 @@ type GitStoreConfig struct {
 	BasePath string       `yaml:"base_path"`
 	Mirror   MirrorConfig `yaml:"mirror"`
 	Import   ImportConfig `yaml:"import"`
+}
+
+type StoreConfig struct {
+	Backend string          `yaml:"backend"` // "git" (default) | "s3" | "oss"
+	S3      StoreS3Config   `yaml:"s3"`
+	OSS     StoreOSSConfig  `yaml:"oss"`
+}
+
+type StoreS3Config struct {
+	Bucket    string `yaml:"bucket"`
+	Region    string `yaml:"region"`
+	Prefix    string `yaml:"prefix"`     // object key prefix, default "skills"
+	Endpoint  string `yaml:"endpoint"`   // custom endpoint (MinIO, etc.)
+	AccessKey string `yaml:"access_key"` // optional, defaults to IAM
+	SecretKey string `yaml:"secret_key"`
+}
+
+type StoreOSSConfig struct {
+	Bucket    string `yaml:"bucket"`
+	Region    string `yaml:"region"`   // e.g. "cn-hangzhou"
+	Prefix    string `yaml:"prefix"`   // object key prefix, default "skills"
+	Endpoint  string `yaml:"endpoint"` // e.g. "oss-cn-hangzhou.aliyuncs.com"
+	AccessKey string `yaml:"access_key"`
+	SecretKey string `yaml:"secret_key"`
 }
 
 type MirrorConfig struct {
@@ -69,7 +94,14 @@ type RateLimitConfig struct {
 }
 
 type AuthConfig struct {
-	TokenPrefix string `yaml:"token_prefix"`
+	TokenPrefix string              `yaml:"token_prefix"`
+	OAuth       map[string]OAuthProviderConfig `yaml:"oauth"`
+}
+
+type OAuthProviderConfig struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	BaseURL      string `yaml:"base_url"` // for self-hosted GitLab etc.
 }
 
 func DefaultConfig() *Config {
@@ -158,5 +190,65 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("SKILLHUB_GIT_PATH"); v != "" {
 		cfg.GitStore.BasePath = v
+	}
+
+	// Store backend env overrides
+	if v := os.Getenv("SKILLHUB_STORE_BACKEND"); v != "" {
+		cfg.Store.Backend = v
+	}
+	if v := os.Getenv("SKILLHUB_S3_BUCKET"); v != "" {
+		cfg.Store.S3.Bucket = v
+	}
+	if v := os.Getenv("SKILLHUB_S3_REGION"); v != "" {
+		cfg.Store.S3.Region = v
+	}
+	if v := os.Getenv("SKILLHUB_S3_PREFIX"); v != "" {
+		cfg.Store.S3.Prefix = v
+	}
+	if v := os.Getenv("SKILLHUB_S3_ENDPOINT"); v != "" {
+		cfg.Store.S3.Endpoint = v
+	}
+	if v := os.Getenv("SKILLHUB_S3_ACCESS_KEY"); v != "" {
+		cfg.Store.S3.AccessKey = v
+	}
+	if v := os.Getenv("SKILLHUB_S3_SECRET_KEY"); v != "" {
+		cfg.Store.S3.SecretKey = v
+	}
+	if v := os.Getenv("SKILLHUB_OSS_BUCKET"); v != "" {
+		cfg.Store.OSS.Bucket = v
+	}
+	if v := os.Getenv("SKILLHUB_OSS_REGION"); v != "" {
+		cfg.Store.OSS.Region = v
+	}
+	if v := os.Getenv("SKILLHUB_OSS_PREFIX"); v != "" {
+		cfg.Store.OSS.Prefix = v
+	}
+	if v := os.Getenv("SKILLHUB_OSS_ENDPOINT"); v != "" {
+		cfg.Store.OSS.Endpoint = v
+	}
+	if v := os.Getenv("SKILLHUB_OSS_ACCESS_KEY"); v != "" {
+		cfg.Store.OSS.AccessKey = v
+	}
+	if v := os.Getenv("SKILLHUB_OSS_SECRET_KEY"); v != "" {
+		cfg.Store.OSS.SecretKey = v
+	}
+
+	// OAuth env overrides
+	if cfg.Auth.OAuth == nil {
+		cfg.Auth.OAuth = make(map[string]OAuthProviderConfig)
+	}
+	for _, provider := range []string{"github", "gitlab"} {
+		prefix := "SKILLHUB_OAUTH_" + strings.ToUpper(provider) + "_"
+		clientID := os.Getenv(prefix + "CLIENT_ID")
+		clientSecret := os.Getenv(prefix + "CLIENT_SECRET")
+		if clientID != "" && clientSecret != "" {
+			p := cfg.Auth.OAuth[provider]
+			p.ClientID = clientID
+			p.ClientSecret = clientSecret
+			if baseURL := os.Getenv(prefix + "BASE_URL"); baseURL != "" {
+				p.BaseURL = baseURL
+			}
+			cfg.Auth.OAuth[provider] = p
+		}
 	}
 }

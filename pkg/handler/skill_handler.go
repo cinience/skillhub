@@ -27,7 +27,8 @@ func (h *SkillHandler) List(c *gin.Context) {
 		limit = l
 	}
 
-	skills, nextCursor, err := h.svc.ListSkills(c.Request.Context(), limit, cursor, sort)
+	viewer := middleware.GetUser(c)
+	skills, nextCursor, err := h.svc.ListSkills(c.Request.Context(), limit, cursor, sort, viewer)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -42,7 +43,8 @@ func (h *SkillHandler) List(c *gin.Context) {
 // Get handles GET /api/v1/skills/:slug
 func (h *SkillHandler) Get(c *gin.Context) {
 	slug := c.Param("slug")
-	skill, err := h.svc.GetSkill(c.Request.Context(), slug)
+	viewer := middleware.GetUser(c)
+	skill, err := h.svc.GetSkill(c.Request.Context(), slug, viewer)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -100,6 +102,10 @@ func (h *SkillHandler) Publish(c *gin.Context) {
 // Delete handles DELETE /api/v1/skills/:slug
 func (h *SkillHandler) Delete(c *gin.Context) {
 	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
 	slug := c.Param("slug")
 
 	if err := h.svc.SoftDelete(c.Request.Context(), user, slug); err != nil {
@@ -113,6 +119,10 @@ func (h *SkillHandler) Delete(c *gin.Context) {
 // Undelete handles POST /api/v1/skills/:slug/undelete
 func (h *SkillHandler) Undelete(c *gin.Context) {
 	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
 	slug := c.Param("slug")
 
 	if err := h.svc.Undelete(c.Request.Context(), user, slug); err != nil {
@@ -126,7 +136,8 @@ func (h *SkillHandler) Undelete(c *gin.Context) {
 // Versions handles GET /api/v1/skills/:slug/versions
 func (h *SkillHandler) Versions(c *gin.Context) {
 	slug := c.Param("slug")
-	versions, err := h.svc.GetVersions(c.Request.Context(), slug)
+	viewer := middleware.GetUser(c)
+	versions, err := h.svc.GetVersions(c.Request.Context(), slug, viewer)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -138,8 +149,9 @@ func (h *SkillHandler) Versions(c *gin.Context) {
 func (h *SkillHandler) Version(c *gin.Context) {
 	slug := c.Param("slug")
 	ver := c.Param("version")
+	viewer := middleware.GetUser(c)
 
-	version, err := h.svc.GetVersion(c.Request.Context(), slug, ver)
+	version, err := h.svc.GetVersion(c.Request.Context(), slug, ver, viewer)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -159,14 +171,32 @@ func (h *SkillHandler) GetFile(c *gin.Context) {
 	if path == "" {
 		path = "SKILL.md"
 	}
+	viewer := middleware.GetUser(c)
 
-	content, err := h.svc.GetFile(c.Request.Context(), slug, version, path)
+	content, err := h.svc.GetFile(c.Request.Context(), slug, version, path, viewer)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", content)
+}
+
+// RequestPublic handles POST /api/v1/skills/:slug/request-public
+func (h *SkillHandler) RequestPublic(c *gin.Context) {
+	user := middleware.GetUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+	slug := c.Param("slug")
+
+	if err := h.svc.RequestPublic(c.Request.Context(), user, slug); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "public review requested"})
 }
 
 func splitTags(s string) []string {

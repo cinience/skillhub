@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/cinience/skillhub/pkg/middleware"
 	"github.com/cinience/skillhub/pkg/service"
 )
 
@@ -32,7 +33,8 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 	hash := sha256.Sum256([]byte(c.ClientIP()))
 	identityHash := hex.EncodeToString(hash[:])
 
-	archive, filename, err := h.svc.Download(c.Request.Context(), slug, version, identityHash)
+	viewer := middleware.GetUser(c)
+	archive, filename, err := h.svc.Download(c.Request.Context(), slug, version, identityHash, viewer)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return

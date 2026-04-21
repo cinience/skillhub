@@ -30,7 +30,7 @@
                         <div class="owner-avatar" style="width: 28px; height: 28px; font-size: 0.7rem; flex-shrink: 0;">{{initial (index . "ownerHandle")}}</div>
                         {{end}}
                         <div style="min-width: 0;">
-                            <div class="card-title" style="margin-bottom: 0;">{{if index . "displayName"}}{{index . "displayName"}}{{else}}{{index . "slug"}}{{end}}</div>
+                            <div class="card-title" style="margin-bottom: 0;" title="{{displayNameTooltip (index . "displayName") (index . "slug") 48}}">{{displayNameText (index . "displayName") (index . "slug") 48}}</div>
                             <div style="font-size: 0.75rem; color: var(--text-muted);">{{if index . "ownerHandle"}}{{index . "ownerHandle"}}/{{end}}{{index . "slug"}}</div>
                         </div>
                     </div>

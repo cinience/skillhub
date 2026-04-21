@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { marked } from 'marked';
 import { getSkill, getVersions, getFile, type Skill, type SkillVersion } from '../api/skills';
 import CodeBlock from '../components/CodeBlock';
+import { formatDisplayName } from '../utils/displayName';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -57,6 +58,7 @@ export default function SkillDetail() {
   const latestVersion = versions.length > 0 ? versions[0] : null;
   const initial = skill.ownerHandle?.[0]?.toUpperCase() || '?';
   const fmt = (d: string) => new Date(d).toLocaleDateString();
+  const title = formatDisplayName(skill.displayName, skill.slug);
 
   return (
     <section style={{ padding: '40px 0' }}>
@@ -66,7 +68,9 @@ export default function SkillDetail() {
             <div className="owner-avatar">{initial}</div>
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{skill.ownerHandle}</span>
           </div>
-          <h1 className="detail-title">{skill.displayName || skill.slug}</h1>
+          <h1 className="detail-title" title={title.tooltip}>
+            {title.text}
+          </h1>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 12, fontFamily: 'monospace' }}>
             {skill.ownerHandle}/{skill.slug}
           </div>

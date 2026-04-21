@@ -12,6 +12,7 @@ type APIToken struct {
 	Label      *string    `gorm:"column:label;type:varchar(256)" json:"label,omitempty"`
 	Prefix     string     `gorm:"column:prefix;type:varchar(20);not null;index" json:"prefix"`
 	TokenHash  string     `gorm:"column:token_hash;type:varchar(128);uniqueIndex;not null" json:"-"`
+	Scope      string     `gorm:"column:scope;type:varchar(32);not null;default:'full'" json:"scope"`
 	LastUsedAt *time.Time `gorm:"column:last_used_at" json:"lastUsedAt,omitempty"`
 	ExpiresAt  *time.Time `gorm:"column:expires_at" json:"expiresAt,omitempty"`
 	CreatedAt  time.Time  `gorm:"column:created_at;autoCreateTime" json:"createdAt"`

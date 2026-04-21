@@ -8,7 +8,7 @@
                 <div class="owner-avatar">{{initial .Skill.OwnerHandle}}</div>
                 <span style="color: var(--text-secondary); font-size: 0.9rem;">{{.Skill.OwnerHandle}}</span>
             </div>
-            <h1 class="detail-title">{{if .Skill.DisplayName}}{{deref .Skill.DisplayName}}{{else}}{{.Skill.Slug}}{{end}}</h1>
+            <h1 class="detail-title" title="{{displayNameTooltip .Skill.DisplayName .Skill.Slug 80}}">{{displayNameText .Skill.DisplayName .Skill.Slug 80}}</h1>
             <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; font-family: monospace;">{{.Skill.OwnerHandle}}/{{.Skill.Slug}}</div>
             {{if .Skill.Summary}}<p class="detail-summary">{{deref .Skill.Summary}}</p>{{end}}
             <div class="detail-stats">

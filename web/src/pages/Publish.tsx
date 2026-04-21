@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { publishSkill } from '../api/skills';
 import CodeBlock from '../components/CodeBlock';
+import { formatDisplayName } from '../utils/displayName';
 
 interface SelectedFile {
   file: File;
@@ -117,6 +118,7 @@ export default function Publish() {
   }
 
   const baseURL = window.location.origin;
+  const resultTitle = result ? formatDisplayName(result.displayName, result.slug, 48) : null;
 
   return (
     <div className="container" style={{ padding: '48px 24px' }}>
@@ -211,7 +213,7 @@ export default function Publish() {
                     <strong>{t('publish.published_ok')}</strong>
                   </div>
                   <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                    <strong>{result.displayName || result.slug}</strong> v{result.version} &mdash; {result.fileCount} file(s)<br />
+                    <strong title={resultTitle?.tooltip}>{resultTitle?.text}</strong> v{result.version} &mdash; {result.fileCount} file(s)<br />
                     <Link to={`/skills/${result.slug}`} style={{ marginTop: 8, display: 'inline-block' }}>{t('publish.view_skill')} &rarr;</Link>
                   </div>
                 </div>

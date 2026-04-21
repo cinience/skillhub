@@ -91,6 +91,15 @@ func (r *UserRepo) Unban(ctx context.Context, id uuid.UUID) error {
 		}).Error
 }
 
+func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*model.User, error) {
+	var user model.User
+	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	return &user, err
+}
+
 func (r *UserRepo) SetPassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
 	return r.db.WithContext(ctx).
 		Model(&model.User{}).

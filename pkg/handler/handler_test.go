@@ -30,35 +30,35 @@ type mockSkillService struct {
 	getVersionFn   func(ctx context.Context, slug, version string) (*model.SkillVersion, error)
 }
 
-func (m *mockSkillService) ListSkills(ctx context.Context, limit int, cursor, sort string) ([]model.SkillWithOwner, string, error) {
+func (m *mockSkillService) ListSkills(ctx context.Context, limit int, cursor, sort string, _ *model.User) ([]model.SkillWithOwner, string, error) {
 	if m.listSkillsFn != nil {
 		return m.listSkillsFn(ctx, limit, cursor, sort)
 	}
 	return nil, "", nil
 }
 
-func (m *mockSkillService) GetSkill(ctx context.Context, slug string) (*model.SkillWithOwner, error) {
+func (m *mockSkillService) GetSkill(ctx context.Context, slug string, _ *model.User) (*model.SkillWithOwner, error) {
 	if m.getSkillFn != nil {
 		return m.getSkillFn(ctx, slug)
 	}
 	return nil, nil
 }
 
-func (m *mockSkillService) GetVersions(ctx context.Context, slug string) ([]model.SkillVersion, error) {
+func (m *mockSkillService) GetVersions(ctx context.Context, slug string, _ *model.User) ([]model.SkillVersion, error) {
 	if m.getVersionsFn != nil {
 		return m.getVersionsFn(ctx, slug)
 	}
 	return nil, nil
 }
 
-func (m *mockSkillService) GetFile(ctx context.Context, slug, version, path string) ([]byte, error) {
+func (m *mockSkillService) GetFile(ctx context.Context, slug, version, path string, _ *model.User) ([]byte, error) {
 	if m.getFileFn != nil {
 		return m.getFileFn(ctx, slug, version, path)
 	}
 	return nil, nil
 }
 
-func (m *mockSkillService) GetVersion(ctx context.Context, slug, version string) (*model.SkillVersion, error) {
+func (m *mockSkillService) GetVersion(ctx context.Context, slug, version string, _ *model.User) (*model.SkillVersion, error) {
 	if m.getVersionFn != nil {
 		return m.getVersionFn(ctx, slug, version)
 	}
@@ -173,6 +173,27 @@ func TestWebHandler_Index_NoSkills(t *testing.T) {
 
 	if w.Code != 200 {
 		t.Errorf("status = %d, want 200", w.Code)
+	}
+}
+
+func TestTemplateFuncMap_DisplayNameFormatting(t *testing.T) {
+	funcMap := TemplateFuncMap()
+	displayNameText := funcMap["displayNameText"].(func(any, any, int) string)
+	displayNameTooltip := funcMap["displayNameTooltip"].(func(any, any, int) string)
+
+	if got := displayNameText("Twilio", "twilio-api", 48); got != "Twilio" {
+		t.Fatalf("short display name = %q, want %q", got, "Twilio")
+	}
+	if got := displayNameText("   ", "social-content", 48); got != "social-content" {
+		t.Fatalf("fallback display name = %q, want %q", got, "social-content")
+	}
+
+	longDisplayName := "My goal is to support the community and continue creating more useful tools."
+	if got := displayNameText(longDisplayName, "social-content", 50); got != "My goal is to support the community and continue…" {
+		t.Fatalf("truncated display name = %q", got)
+	}
+	if got := displayNameTooltip(longDisplayName, "social-content", 50); got != longDisplayName {
+		t.Fatalf("tooltip = %q, want original", got)
 	}
 }
 
@@ -307,8 +328,8 @@ func TestWebHandler_Search_WithQuery(t *testing.T) {
 			if limit != 20 {
 				t.Errorf("limit = %d, want 20", limit)
 			}
-			if !strings.Contains(filters, "moderationStatus = approved") {
-				t.Errorf("filters should include moderation check: %q", filters)
+			if !strings.Contains(filters, "visibility = public") || !strings.Contains(filters, "moderationStatus = approved") {
+				t.Errorf("filters should include visibility and moderation check: %q", filters)
 			}
 			return &search.SearchResult{
 				Hits:             []map[string]interface{}{{"slug": "go-skill"}},

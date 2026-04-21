@@ -29,11 +29,12 @@ func (h *AuthHandler) WhoAmI(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-// CreateToken handles POST /api/v1/tokens
+// CreateToken handles POST /api/v1/admin/tokens (admin creates token for any user)
 func (h *AuthHandler) CreateToken(c *gin.Context) {
 	var req struct {
 		UserID string `json:"userId"`
 		Label  string `json:"label"`
+		Scope  string `json:"scope"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -46,7 +47,7 @@ func (h *AuthHandler) CreateToken(c *gin.Context) {
 		return
 	}
 
-	rawToken, token, err := h.authSvc.CreateToken(c.Request.Context(), userID, req.Label)
+	rawToken, token, err := h.authSvc.CreateToken(c.Request.Context(), userID, req.Label, req.Scope, 0)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

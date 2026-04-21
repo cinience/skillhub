@@ -20,6 +20,7 @@ import (
 	"github.com/cinience/skillhub/pkg/repository"
 	"github.com/cinience/skillhub/pkg/search"
 	"github.com/cinience/skillhub/pkg/service"
+	"github.com/cinience/skillhub/pkg/store"
 	"github.com/cinience/skillhub/web"
 	"gorm.io/gorm"
 )
@@ -48,10 +49,41 @@ func New(cfg *config.Config) (*Server, error) {
 	starRepo := repository.NewStarRepo(db)
 	downloadRepo := repository.NewDownloadRepo(db)
 
-	// Git Store
+	// Git Store (always created — Mirror and Import depend on it)
 	gs, err := gitstore.New(cfg.GitStore.BasePath)
 	if err != nil {
 		return nil, fmt.Errorf("gitstore: %w", err)
+	}
+
+	// File Store backend (git / s3 / oss)
+	var fileStore store.Store
+	switch cfg.Store.Backend {
+	case "s3":
+		fileStore, err = store.NewS3Backend(store.S3Config{
+			Bucket:    cfg.Store.S3.Bucket,
+			Region:    cfg.Store.S3.Region,
+			Prefix:    cfg.Store.S3.Prefix,
+			Endpoint:  cfg.Store.S3.Endpoint,
+			AccessKey: cfg.Store.S3.AccessKey,
+			SecretKey: cfg.Store.S3.SecretKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("s3 store: %w", err)
+		}
+	case "oss":
+		fileStore, err = store.NewOSSBackend(store.OSSConfig{
+			Bucket:    cfg.Store.OSS.Bucket,
+			Region:    cfg.Store.OSS.Region,
+			Prefix:    cfg.Store.OSS.Prefix,
+			Endpoint:  cfg.Store.OSS.Endpoint,
+			AccessKey: cfg.Store.OSS.AccessKey,
+			SecretKey: cfg.Store.OSS.SecretKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("oss store: %w", err)
+		}
+	default: // "git" or ""
+		fileStore = store.NewGitBackend(gs)
 	}
 
 	// Mirror Service
@@ -70,8 +102,31 @@ func New(cfg *config.Config) (*Server, error) {
 	// Auth
 	authSvc := auth.NewService(tokenRepo, userRepo)
 
+	// OAuth
+	oauthRepo := repository.NewOAuthRepo(db)
+	oauthSvc := auth.NewOAuthService(cfg.Auth.OAuth, oauthRepo, userRepo, authSvc, cfg.Server.BaseURL)
+
+	// Device Auth
+	deviceSvc := auth.NewDeviceAuthService(authSvc, cfg.Server.BaseURL)
+
+	// Audit
+	auditRepo := repository.NewAuditRepo(db)
+	auditSvc := service.NewAuditService(auditRepo)
+
 	// Service
-	skillSvc := service.NewSkillService(skillRepo, versionRepo, userRepo, downloadRepo, starRepo, gs, searchClient, mirrorSvc)
+	skillSvc := service.NewSkillService(skillRepo, versionRepo, userRepo, downloadRepo, starRepo, fileStore, searchClient, mirrorSvc, auditSvc)
+
+	// Namespace
+	nsRepo := repository.NewNamespaceRepo(db)
+	nsSvc := service.NewNamespaceService(nsRepo, userRepo)
+
+	// Notifications
+	notifRepo := repository.NewNotificationRepo(db)
+	notifSvc := service.NewNotificationService(notifRepo)
+
+	// Ratings
+	ratingRepo := repository.NewRatingRepo(db)
+	ratingSvc := service.NewRatingService(ratingRepo, skillRepo)
 
 	// Rate Limiter
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimit)
@@ -82,9 +137,17 @@ func New(cfg *config.Config) (*Server, error) {
 	downloadHandler := handler.NewDownloadHandler(skillSvc)
 	authHandler := handler.NewAuthHandler(authSvc, userRepo)
 	starHandler := handler.NewStarHandler(skillSvc)
-	adminHandler := handler.NewAdminHandler(userRepo)
+	adminHandler := handler.NewAdminHandler(userRepo, skillSvc, auditSvc)
+	auditHandler := handler.NewAuditHandler(auditSvc)
+	tokenHandler := handler.NewTokenHandler(authSvc, tokenRepo)
+	nsHandler := handler.NewNamespaceHandler(nsSvc)
+	notifHandler := handler.NewNotificationHandler(notifSvc)
+	ratingHandler := handler.NewRatingHandler(ratingSvc)
+	oauthHandler := handler.NewOAuthHandler(oauthSvc)
+	deviceHandler := handler.NewDeviceAuthHandler(deviceSvc)
 	webhookHandler := handler.NewWebhookHandler(importSvc)
 	wellKnownHandler := handler.NewWellKnownHandler(cfg)
+	agentHandler := handler.NewAgentHandler(authSvc, userRepo)
 
 	// Web auth handler (login/logout still server-side for cookie management)
 	webAuthHandler := handler.NewWebAuthHandler(authSvc)
@@ -97,6 +160,20 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Well-known
 	router.GET("/.well-known/clawhub.json", wellKnownHandler.ClawHubJSON)
+
+	// OAuth routes
+	router.GET("/auth/:provider", oauthHandler.Redirect)
+	router.GET("/auth/:provider/callback", oauthHandler.Callback)
+
+	// Device auth routes (rate-limited to prevent DoS)
+	deviceRoutes := router.Group("/auth/device")
+	deviceRoutes.Use(rateLimiter.RateLimit("write"))
+	{
+		deviceRoutes.POST("/code", deviceHandler.RequestCode)
+		deviceRoutes.GET("/verify", middleware.WebOptionalAuth(authSvc), deviceHandler.VerifyPage)
+		deviceRoutes.POST("/verify", middleware.RequireAuth(authSvc), deviceHandler.VerifySubmit)
+		deviceRoutes.POST("/token", deviceHandler.PollToken)
+	}
 
 	// Login/logout routes (server-side cookie management)
 	webRoutes := router.Group("")
@@ -138,30 +215,51 @@ func New(cfg *config.Config) (*Server, error) {
 		public.GET("/skills/:slug/versions/:version", skillHandler.Version)
 		public.GET("/skills/:slug/file", skillHandler.GetFile)
 		public.GET("/resolve", downloadHandler.Resolve)
+		public.GET("/skills/:slug/ratings", ratingHandler.List)
 	}
 
 	// Download endpoint (with download rate limit)
 	download := api.Group("")
 	download.Use(rateLimiter.RateLimit("download"))
+	download.Use(middleware.OptionalAuth(authSvc))
 	{
 		download.GET("/download", downloadHandler.Download)
 	}
 
-	// Authenticated endpoints (with write rate limit)
+	// Authenticated endpoints (with write rate limit and scope enforcement)
 	authed := api.Group("")
 	authed.Use(middleware.RequireAuth(authSvc))
+	authed.Use(middleware.RequireScope())
 	authed.Use(rateLimiter.RateLimit("write"))
 	{
 		authed.GET("/whoami", authHandler.WhoAmI)
 		authed.POST("/skills", skillHandler.Publish)
 		authed.DELETE("/skills/:slug", skillHandler.Delete)
 		authed.POST("/skills/:slug/undelete", skillHandler.Undelete)
+		authed.POST("/skills/:slug/request-public", skillHandler.RequestPublic)
 		authed.POST("/stars/:slug", starHandler.Star)
 		authed.DELETE("/stars/:slug", starHandler.Unstar)
+		authed.GET("/tokens", tokenHandler.List)
+		authed.POST("/tokens", tokenHandler.Create)
+		authed.DELETE("/tokens/:id", tokenHandler.Revoke)
+		authed.POST("/namespaces", nsHandler.Create)
+		authed.GET("/namespaces", nsHandler.List)
+		authed.GET("/namespaces/:slug", nsHandler.Get)
+		authed.PUT("/namespaces/:slug", nsHandler.Update)
+		authed.DELETE("/namespaces/:slug", nsHandler.Delete)
+		authed.GET("/namespaces/:slug/members", nsHandler.ListMembers)
+		authed.POST("/namespaces/:slug/members", nsHandler.AddMember)
+		authed.DELETE("/namespaces/:slug/members/:handle", nsHandler.RemoveMember)
+		authed.GET("/notifications", notifHandler.List)
+		authed.GET("/notifications/unread", notifHandler.Unread)
+		authed.POST("/notifications/:id/read", notifHandler.MarkRead)
+		authed.POST("/notifications/read-all", notifHandler.MarkAllRead)
+		authed.POST("/skills/:slug/ratings", ratingHandler.Rate)
+		authed.DELETE("/skills/:slug/ratings", ratingHandler.Delete)
 	}
 
 	// Admin endpoints
-	admin := api.Group("")
+	admin := api.Group("/admin")
 	admin.Use(middleware.RequireAuth(authSvc))
 	admin.Use(middleware.RequireRole("admin"))
 	{
@@ -170,7 +268,14 @@ func New(cfg *config.Config) (*Server, error) {
 		admin.GET("/users", adminHandler.ListUsers)
 		admin.POST("/users", adminHandler.CreateUser)
 		admin.POST("/tokens", authHandler.CreateToken)
+		admin.GET("/skills", adminHandler.ListAllSkills)
+		admin.POST("/skills/:slug/review", adminHandler.ReviewSkill)
+		admin.POST("/skills/:slug/visibility", adminHandler.SetVisibility)
+		admin.GET("/audit-logs", auditHandler.List)
 	}
+
+	// Agent auto-provisioning (rate-limited, requires SKILLHUB_AGENT_SECRET)
+	api.POST("/agent/provision", rateLimiter.RateLimit("write"), agentHandler.Provision)
 
 	// Webhook endpoints
 	webhooks := api.Group("/webhooks")

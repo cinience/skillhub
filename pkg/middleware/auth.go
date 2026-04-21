@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	UserContextKey = "user"
+	UserContextKey      = "user"
+	TokenScopeKey       = "token_scope"
 )
 
 func RequireAuth(authSvc *auth.Service) gin.HandlerFunc {
@@ -62,8 +63,9 @@ func extractUser(c *gin.Context, authSvc *auth.Service) *model.User {
 	if header != "" {
 		token := strings.TrimPrefix(header, "Bearer ")
 		if token != header {
-			user, err := authSvc.ValidateToken(c.Request.Context(), token)
+			user, scope, err := authSvc.ValidateToken(c.Request.Context(), token)
 			if err == nil && user != nil {
+				c.Set(TokenScopeKey, scope)
 				return user
 			}
 		}
@@ -71,13 +73,51 @@ func extractUser(c *gin.Context, authSvc *auth.Service) *model.User {
 
 	// Fall back to session cookie
 	if token, err := c.Cookie("session_token"); err == nil && token != "" {
-		user, err := authSvc.ValidateToken(c.Request.Context(), token)
+		user, scope, err := authSvc.ValidateToken(c.Request.Context(), token)
 		if err == nil && user != nil {
+			c.Set(TokenScopeKey, scope)
 			return user
 		}
 	}
 
 	return nil
+}
+
+// RequireScope checks that the token scope allows the current request method.
+// Scope rules: "read" → GET only; "publish" → GET + POST /skills; "full" → all.
+func RequireScope(allowedScopes ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		scopeVal, exists := c.Get(TokenScopeKey)
+		if !exists {
+			// No scope set means session cookie (full access)
+			c.Next()
+			return
+		}
+		scope := scopeVal.(string)
+		if scope == "full" {
+			c.Next()
+			return
+		}
+
+		method := c.Request.Method
+
+		switch scope {
+		case "read":
+			if method != "GET" && method != "HEAD" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "token scope 'read' only allows GET requests"})
+				c.Abort()
+				return
+			}
+		case "publish":
+			if method != "GET" && method != "HEAD" && method != "POST" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "token scope 'publish' does not allow this method"})
+				c.Abort()
+				return
+			}
+		}
+
+		c.Next()
+	}
 }
 
 // WebOptionalAuth is an alias for OptionalAuth, used on web routes.

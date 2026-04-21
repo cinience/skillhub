@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,10 +23,19 @@ func NewService(tokenRepo *repository.TokenRepo, userRepo *repository.UserRepo) 
 }
 
 // CreateToken generates a new API token for a user.
-func (s *Service) CreateToken(ctx context.Context, userID uuid.UUID, label string) (string, *model.APIToken, error) {
+// scope: "full" (default), "read", or "publish".
+// expiresIn: optional duration; if zero, the token never expires.
+func (s *Service) CreateToken(ctx context.Context, userID uuid.UUID, label, scope string, expiresIn time.Duration) (string, *model.APIToken, error) {
 	rawToken, prefix, tokenHash, err := GenerateToken("")
 	if err != nil {
 		return "", nil, err
+	}
+
+	if scope == "" {
+		scope = "full"
+	}
+	if scope != "full" && scope != "read" && scope != "publish" {
+		return "", nil, fmt.Errorf("invalid scope: %s", scope)
 	}
 
 	token := &model.APIToken{
@@ -34,6 +44,12 @@ func (s *Service) CreateToken(ctx context.Context, userID uuid.UUID, label strin
 		Label:     &label,
 		Prefix:    prefix,
 		TokenHash: tokenHash,
+		Scope:     scope,
+	}
+
+	if expiresIn > 0 {
+		exp := time.Now().Add(expiresIn)
+		token.ExpiresAt = &exp
 	}
 
 	if err := s.tokenRepo.Create(ctx, token); err != nil {
@@ -43,12 +59,12 @@ func (s *Service) CreateToken(ctx context.Context, userID uuid.UUID, label strin
 	return rawToken, token, nil
 }
 
-// ValidateToken validates a raw token and returns the associated user.
-func (s *Service) ValidateToken(ctx context.Context, rawToken string) (*model.User, error) {
+// ValidateToken validates a raw token and returns the associated user and token scope.
+func (s *Service) ValidateToken(ctx context.Context, rawToken string) (*model.User, string, error) {
 	prefix := ExtractPrefix(rawToken)
 	tokens, err := s.tokenRepo.GetByPrefix(ctx, prefix)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	tokenHash := HashToken(rawToken)
@@ -65,16 +81,20 @@ func (s *Service) ValidateToken(ctx context.Context, rawToken string) (*model.Us
 
 			user, err := s.userRepo.GetByID(ctx, t.UserID)
 			if err != nil {
-				return nil, err
+				return nil, "", err
 			}
 			if user == nil || user.IsBanned {
-				return nil, nil
+				return nil, "", nil
 			}
-			return user, nil
+			scope := t.Scope
+			if scope == "" {
+				scope = "full"
+			}
+			return user, scope, nil
 		}
 	}
 
-	return nil, nil
+	return nil, "", nil
 }
 
 // HashPassword hashes a plaintext password using bcrypt.
@@ -110,9 +130,9 @@ func (s *Service) Login(ctx context.Context, handle, password string) (string, *
 		return "", nil, errors.New("invalid username or password")
 	}
 
-	// Create a session token
+	// Create a session token (30-day expiry)
 	label := "web-session"
-	rawToken, _, err := s.CreateToken(ctx, user.ID, label)
+	rawToken, _, err := s.CreateToken(ctx, user.ID, label, "full", 30*24*time.Hour)
 	if err != nil {
 		return "", nil, err
 	}

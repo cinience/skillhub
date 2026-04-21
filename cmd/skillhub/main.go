@@ -172,7 +172,7 @@ func handleAdmin() {
 			log.Fatalf("user not found: %s", userHandle)
 		}
 
-		rawToken, _, err := authSvc.CreateToken(ctx, user.ID, label)
+		rawToken, _, err := authSvc.CreateToken(ctx, user.ID, label, "full", 0)
 		if err != nil {
 			log.Fatalf("failed to create token: %v", err)
 		}

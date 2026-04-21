@@ -64,14 +64,37 @@ func NewDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		&model.ReservedSlug{},
 		&model.SkillOwnershipTransfer{},
 		&model.Comment{},
+		&model.Namespace{},
+		&model.NamespaceMember{},
+		&model.OAuthIdentity{},
+		&model.Notification{},
+		&model.Rating{},
 	); err != nil {
 		return nil, fmt.Errorf("auto migrate: %w", err)
 	}
 
-	// Seed reserved slugs
-	seedReservedSlugs(db)
+	// Migrate existing approved skills to public visibility (in transaction)
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		migrateVisibility(tx)
+		seedReservedSlugs(tx)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("post-migration: %w", err)
+	}
 
 	return db, nil
+}
+
+// migrateVisibility sets existing approved skills with empty visibility to public (one-time migration).
+// Only affects skills with empty or NULL visibility — intentionally-private skills are not touched.
+func migrateVisibility(db *gorm.DB) {
+	result := db.Model(&model.Skill{}).
+		Where("moderation_status = ? AND (visibility = '' OR visibility IS NULL)", "approved").
+		Where("soft_deleted_at IS NULL").
+		Update("visibility", "public")
+	if result.RowsAffected > 0 {
+		log.Printf("database: migrated %d existing approved skills to public visibility", result.RowsAffected)
+	}
 }
 
 func seedReservedSlugs(db *gorm.DB) {

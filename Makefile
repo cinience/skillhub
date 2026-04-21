@@ -1,4 +1,4 @@
-.PHONY: build deps dev setup clean help quickstart test frontend dev-frontend dev-backend
+.PHONY: build deps dev run setup clean help quickstart test frontend dev-frontend dev-backend
 
 # Build frontend (React + Vite)
 frontend:
@@ -52,6 +52,10 @@ setup: build
 	@echo "  Start server:  make dev"
 	@echo "  Web login:     http://localhost:10070/login"
 	@echo "  Username:      $(ADMIN_USER)"
+
+# Build frontend + Go binary, then start server
+run: build
+	./skillhub serve
 
 # Start server in development mode
 dev: build
@@ -110,6 +114,7 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  quickstart    - One-click: build + create admin + start server (SQLite)"
+	@echo "  run           - Build frontend + Go binary, then start server"
 	@echo "  build         - Build frontend + Go binary"
 	@echo "  build-go      - Build Go binary only (skip frontend)"
 	@echo "  frontend      - Build frontend only"

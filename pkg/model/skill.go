@@ -12,7 +12,9 @@ type Skill struct {
 	DisplayName      *string      `gorm:"column:display_name;type:varchar(256)" json:"displayName,omitempty"`
 	Summary          *string      `gorm:"column:summary;type:text" json:"summary,omitempty"`
 	OwnerID          uuid.UUID    `gorm:"column:owner_id;type:text;not null;index" json:"ownerId"`
+	NamespaceID      *uuid.UUID   `gorm:"column:namespace_id;type:text;index" json:"namespaceId,omitempty"`
 	LatestVersionID  *uuid.UUID   `gorm:"column:latest_version_id;type:text" json:"latestVersionId,omitempty"`
+	Visibility       string       `gorm:"column:visibility;type:varchar(20);not null;default:'private'" json:"visibility"`
 	ModerationStatus string       `gorm:"column:moderation_status;type:varchar(20);not null;default:'approved'" json:"moderationStatus"`
 	IsSuspicious     bool         `gorm:"column:is_suspicious;not null;default:false" json:"isSuspicious"`
 	Tags             StringArray  `gorm:"column:tags;type:text;not null;default:'[]'" json:"tags"`
@@ -21,6 +23,8 @@ type Skill struct {
 	StarsCount       int          `gorm:"column:stars_count;not null;default:0;index" json:"starsCount"`
 	VersionsCount    int          `gorm:"column:versions_count;not null;default:0" json:"versionsCount"`
 	CommentsCount    int          `gorm:"column:comments_count;not null;default:0" json:"commentsCount"`
+	AverageRating    float64      `gorm:"column:average_rating;not null;default:0" json:"averageRating"`
+	RatingsCount     int          `gorm:"column:ratings_count;not null;default:0" json:"ratingsCount"`
 	CreatedAt        time.Time    `gorm:"column:created_at;autoCreateTime;index" json:"createdAt"`
 	UpdatedAt        time.Time    `gorm:"column:updated_at;autoUpdateTime;index" json:"updatedAt"`
 	SoftDeletedAt    *time.Time   `gorm:"column:soft_deleted_at;index" json:"softDeletedAt,omitempty"`

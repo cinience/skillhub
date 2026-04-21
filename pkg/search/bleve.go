@@ -61,6 +61,7 @@ func buildMapping() mapping.IndexMapping {
 	skillMapping.AddFieldMappingsAt("ownerHandle", textField)
 
 	// Filterable keyword fields
+	skillMapping.AddFieldMappingsAt("visibility", keywordField)
 	skillMapping.AddFieldMappingsAt("moderationStatus", keywordField)
 	skillMapping.AddFieldMappingsAt("ownerHandleExact", keywordField)
 
@@ -88,6 +89,7 @@ type SkillDocument struct {
 	Tags             []string `json:"tags"`
 	OwnerHandle      string   `json:"ownerHandle"`
 	OwnerHandleExact string   `json:"ownerHandleExact"`
+	Visibility       string   `json:"visibility"`
 	ModerationStatus string   `json:"moderationStatus"`
 	IsSuspicious     bool     `json:"isSuspicious"`
 	IsDeleted        bool     `json:"isDeleted"`

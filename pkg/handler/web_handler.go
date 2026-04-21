@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -11,19 +12,51 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/cinience/skillhub/pkg/auth"
 	"github.com/cinience/skillhub/pkg/middleware"
 	"github.com/cinience/skillhub/pkg/model"
 	"github.com/cinience/skillhub/pkg/search"
 	"github.com/yuin/goldmark"
 )
 
+func normalizeTemplateWhitespace(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}
+
+func templateString(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case *string:
+		if v == nil {
+			return ""
+		}
+		return *v
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func formatTemplateDisplayName(raw any, fallback any, maxLength int) (string, string) {
+	source := normalizeTemplateWhitespace(templateString(raw))
+	if source == "" {
+		source = normalizeTemplateWhitespace(templateString(fallback))
+	}
+	runes := []rune(source)
+	if len(runes) <= maxLength {
+		return source, ""
+	}
+	clipped := strings.TrimRight(string(runes[:maxLength-1]), " ")
+	return clipped + "…", source
+}
+
 // WebSkillService defines the skill operations needed by the web UI.
 type WebSkillService interface {
-	ListSkills(ctx context.Context, limit int, cursor, sort string) ([]model.SkillWithOwner, string, error)
-	GetSkill(ctx context.Context, slug string) (*model.SkillWithOwner, error)
-	GetVersions(ctx context.Context, slug string) ([]model.SkillVersion, error)
-	GetFile(ctx context.Context, slug, version, path string) ([]byte, error)
+	ListSkills(ctx context.Context, limit int, cursor, sort string, viewer *model.User) ([]model.SkillWithOwner, string, error)
+	GetSkill(ctx context.Context, slug string, viewer *model.User) (*model.SkillWithOwner, error)
+	GetVersions(ctx context.Context, slug string, viewer *model.User) ([]model.SkillVersion, error)
+	GetFile(ctx context.Context, slug, version, path string, viewer *model.User) ([]byte, error)
 }
 
 // WebSearchService defines the search operations needed by the web UI.
@@ -34,7 +67,6 @@ type WebSearchService interface {
 type WebHandler struct {
 	svc       WebSkillService
 	searchCli WebSearchService
-	authSvc   *auth.Service
 	templates map[string]*template.Template
 	baseURL   string
 }
@@ -57,10 +89,18 @@ func TemplateFuncMap() template.FuncMap {
 		"formatTime": func(t time.Time) string {
 			return t.Format("Jan 2, 2006")
 		},
+		"displayNameText": func(raw any, fallback any, maxLength int) string {
+			text, _ := formatTemplateDisplayName(raw, fallback, maxLength)
+			return text
+		},
+		"displayNameTooltip": func(raw any, fallback any, maxLength int) string {
+			_, tooltip := formatTemplateDisplayName(raw, fallback, maxLength)
+			return tooltip
+		},
 	}
 }
 
-func NewWebHandler(svc WebSkillService, searchCli WebSearchService, authSvc *auth.Service, templateDir string, baseURL string) *WebHandler {
+func NewWebHandler(svc WebSkillService, searchCli WebSearchService, templateDir string, baseURL string) *WebHandler {
 	funcMap := TemplateFuncMap()
 	layoutFile := filepath.Join(templateDir, "layout.html")
 
@@ -78,7 +118,6 @@ func NewWebHandler(svc WebSkillService, searchCli WebSearchService, authSvc *aut
 	return &WebHandler{
 		svc:       svc,
 		searchCli: searchCli,
-		authSvc:   authSvc,
 		templates: templates,
 		baseURL:   baseURL,
 	}
@@ -114,7 +153,8 @@ func (h *WebHandler) render(c *gin.Context, name string, data gin.H) {
 // Index renders the homepage with popular skills.
 func (h *WebHandler) Index(c *gin.Context) {
 	ctx := c.Request.Context()
-	skills, _, _ := h.svc.ListSkills(ctx, 6, "", "downloads")
+	viewer := middleware.GetUser(c)
+	skills, _, _ := h.svc.ListSkills(ctx, 6, "", "downloads", viewer)
 
 	h.render(c, "index.html", gin.H{
 		"Title":  "",
@@ -127,8 +167,9 @@ func (h *WebHandler) Skills(c *gin.Context) {
 	ctx := c.Request.Context()
 	sort := c.DefaultQuery("sort", "created")
 	cursor := c.Query("cursor")
+	viewer := middleware.GetUser(c)
 
-	skills, nextCursor, _ := h.svc.ListSkills(ctx, 20, cursor, sort)
+	skills, nextCursor, _ := h.svc.ListSkills(ctx, 20, cursor, sort, viewer)
 
 	h.render(c, "skills.html", gin.H{
 		"Title":      "Skills",
@@ -142,15 +183,16 @@ func (h *WebHandler) Skills(c *gin.Context) {
 func (h *WebHandler) SkillDetail(c *gin.Context) {
 	ctx := c.Request.Context()
 	slug := c.Param("slug")
+	viewer := middleware.GetUser(c)
 
-	skill, err := h.svc.GetSkill(ctx, slug)
+	skill, err := h.svc.GetSkill(ctx, slug, viewer)
 	if err != nil || skill == nil {
 		c.String(http.StatusNotFound, "Skill not found")
 		return
 	}
 
 	// Get versions
-	versions, _ := h.svc.GetVersions(ctx, slug)
+	versions, _ := h.svc.GetVersions(ctx, slug, viewer)
 
 	// Get latest version
 	var latestVersion interface{}
@@ -160,7 +202,7 @@ func (h *WebHandler) SkillDetail(c *gin.Context) {
 
 	// Render SKILL.md as HTML
 	var skillMdHTML template.HTML
-	content, err := h.svc.GetFile(ctx, slug, "latest", "SKILL.md")
+	content, err := h.svc.GetFile(ctx, slug, "latest", "SKILL.md", viewer)
 	if err == nil && len(content) > 0 {
 		content = stripFrontmatter(content)
 		var buf bytes.Buffer
@@ -190,7 +232,7 @@ func (h *WebHandler) Search(c *gin.Context) {
 
 	if query != "" && h.searchCli != nil {
 		ctx := c.Request.Context()
-		filters := "moderationStatus = approved AND isDeleted = false"
+		filters := "visibility = public AND moderationStatus = approved AND isDeleted = false"
 		result, err := h.searchCli.Search(ctx, query, 20, 0, nil, filters)
 		if err == nil && result != nil {
 			data["Results"] = result.Hits
@@ -242,43 +284,3 @@ func (h *WebHandler) LoginPage(c *gin.Context) {
 	})
 }
 
-// LoginSubmit handles the login form submission (POST /login).
-func (h *WebHandler) LoginSubmit(c *gin.Context) {
-	handle := strings.TrimSpace(c.PostForm("handle"))
-	password := c.PostForm("password")
-
-	if handle == "" || password == "" {
-		h.render(c, "login.html", gin.H{
-			"Title":  "Login",
-			"Error":  "Username and password are required.",
-			"Handle": handle,
-		})
-		return
-	}
-
-	rawToken, _, err := h.authSvc.Login(c.Request.Context(), handle, password)
-	if err != nil {
-		h.render(c, "login.html", gin.H{
-			"Title":  "Login",
-			"Error":  err.Error(),
-			"Handle": handle,
-		})
-		return
-	}
-
-	// Set session cookie (httpOnly, 30 days)
-	c.SetCookie("session_token", rawToken, 30*24*3600, "/", "", false, true)
-
-	// Redirect to the page they came from, or home
-	redirect := c.Query("redirect")
-	if redirect == "" {
-		redirect = "/"
-	}
-	c.Redirect(http.StatusFound, redirect)
-}
-
-// Logout clears the session cookie (POST /logout).
-func (h *WebHandler) Logout(c *gin.Context) {
-	c.SetCookie("session_token", "", -1, "/", "", false, true)
-	c.Redirect(http.StatusFound, "/")
-}

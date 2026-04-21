@@ -38,7 +38,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 		sortFields = []string{s}
 	}
 
-	filters := "moderationStatus = approved AND isDeleted = false"
+	filters := "visibility = public AND moderationStatus = approved AND isDeleted = false"
 
 	result, err := h.searchClient.Search(c.Request.Context(), query, limit, offset, sortFields, filters)
 	if err != nil {

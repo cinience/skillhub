@@ -45,3 +45,4 @@ data/
 # Frontend
 web/node_modules/
 web/static/
+.omx/

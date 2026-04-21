@@ -351,6 +351,20 @@ function escapeHtml(s) {
     return d.innerHTML;
 }
 
+function formatDisplayName(raw, fallback, maxLength) {
+    var normalize = function(value) {
+        return (value || '').replace(/\s+/g, ' ').trim();
+    };
+    var source = normalize(raw) || normalize(fallback);
+    if (source.length <= maxLength) {
+        return { text: source, tooltip: '' };
+    }
+    return {
+        text: source.slice(0, Math.max(1, maxLength - 1)).replace(/\s+$/, '') + '…',
+        tooltip: source
+    };
+}
+
 // Drag and drop
 var dropZone = document.getElementById('dropZone');
 if (dropZone) {
@@ -420,8 +434,9 @@ document.getElementById('publishForm').addEventListener('submit', function(e) {
             var skill = result.data.skill || {};
             var ver = result.data.version || {};
             var files = ver.files || [];
+            var title = formatDisplayName(skill.displayName, skill.slug, 48);
             document.getElementById('resultDetail').innerHTML =
-                '<strong>' + (skill.displayName || skill.slug) + '</strong> v' + (ver.version || '?') +
+                '<strong title="' + escapeHtml(title.tooltip) + '">' + escapeHtml(title.text) + '</strong> v' + (ver.version || '?') +
                 ' &mdash; ' + files.length + ' file(s)<br>' +
                 '<a href="/skills/' + skill.slug + '" style="margin-top: 8px; display: inline-block;">View skill page &rarr;</a>';
         } else {
