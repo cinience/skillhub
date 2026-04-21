@@ -86,6 +86,7 @@ func (h *SkillHandler) Publish(c *gin.Context) {
 		DisplayName: c.PostForm("displayName"),
 		Summary:     c.PostForm("summary"),
 		Category:    c.PostForm("category"),
+		Kind:        c.PostForm("kind"),
 		Files:       files,
 	}
 	if tags := c.PostForm("tags"); tags != "" {

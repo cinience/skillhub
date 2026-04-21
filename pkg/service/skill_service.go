@@ -72,6 +72,7 @@ type PublishRequest struct {
 	DisplayName string
 	Summary     string
 	Category    string
+	Kind        string
 	Tags        []string
 	Files       map[string][]byte // path → content
 }
@@ -87,6 +88,21 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 	}
 	if reserved {
 		return nil, nil, fmt.Errorf("slug '%s' is reserved", req.Slug)
+	}
+	// Enforce reserved namespaces — animus-builtin/*, animus-domain/* are admin-only.
+	if model.IsReservedNamespace(req.Slug) && !user.IsAdmin() {
+		return nil, nil, fmt.Errorf("slug '%s' falls in a reserved namespace (admin only)", req.Slug)
+	}
+	// Validate kind if provided (default: custom)
+	if req.Kind == "" {
+		req.Kind = "custom"
+	}
+	if !model.IsValidKind(req.Kind) {
+		return nil, nil, fmt.Errorf("invalid kind '%s'", req.Kind)
+	}
+	// Only admins may publish builtin/domain kinds.
+	if (req.Kind == "builtin" || req.Kind == "domain") && !user.IsAdmin() {
+		return nil, nil, fmt.Errorf("kind '%s' is admin-only", req.Kind)
 	}
 
 	// Validate semver
@@ -110,6 +126,18 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 		if !model.IsValidCategory(category) {
 			return nil, nil, fmt.Errorf("invalid category '%s'", category)
 		}
+		// Auto-derive kind from reserved namespace prefix if caller didn't override.
+		kind := req.Kind
+		if kind == "" || kind == "custom" {
+			switch {
+			case strings.HasPrefix(req.Slug, "animus-builtin/"):
+				kind = "builtin"
+			case strings.HasPrefix(req.Slug, "animus-domain/"):
+				kind = "domain"
+			default:
+				kind = req.Kind
+			}
+		}
 		newSkill := &model.Skill{
 			ID:               uuid.New(),
 			Slug:             req.Slug,
@@ -118,6 +146,7 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 			Tags:             model.StringArray(req.Tags),
 			Visibility:       "private",
 			ModerationStatus: "approved",
+			Kind:             kind,
 		}
 		if req.DisplayName != "" {
 			newSkill.DisplayName = &req.DisplayName
@@ -310,49 +339,62 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 	return skill, ver, nil
 }
 
-// Download returns a zip archive for a skill version.
-func (s *SkillService) Download(ctx context.Context, slug, version string, identityHash string, viewer *model.User) (io.ReadCloser, string, error) {
+// DownloadResult carries a zip archive plus metadata for ETag / filename.
+type DownloadResult struct {
+	Archive     io.ReadCloser
+	Filename    string
+	Fingerprint string
+	Version     string
+}
+
+// ResolveVersion returns the version record for a slug+version (accepts "latest").
+// It enforces visibility. Returned SkillVersion is non-nil on success.
+func (s *SkillService) ResolveVersion(ctx context.Context, slug, version string, viewer *model.User) (*model.SkillWithOwner, *model.SkillVersion, error) {
 	skill, err := s.skillRepo.GetBySlugOrAlias(ctx, slug)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
-	if skill == nil {
-		return nil, "", fmt.Errorf("skill not found: %s", slug)
-	}
-	if !canViewSkill(skill, viewer) {
-		return nil, "", fmt.Errorf("skill not found: %s", slug)
+	if skill == nil || !canViewSkill(skill, viewer) {
+		return nil, nil, fmt.Errorf("skill not found: %s", slug)
 	}
 
-	// Resolve version
 	if version == "" || version == "latest" {
 		if skill.LatestVersionID == nil {
-			return nil, "", fmt.Errorf("no versions published")
+			return skill, nil, fmt.Errorf("no versions published")
 		}
 		v, err := s.versionRepo.GetByID(ctx, *skill.LatestVersionID)
 		if err != nil {
-			return nil, "", err
+			return skill, nil, err
 		}
 		if v == nil {
-			return nil, "", fmt.Errorf("latest version not found")
+			return skill, nil, fmt.Errorf("latest version not found")
 		}
-		version = v.Version
+		return skill, v, nil
 	}
 
 	ver, err := s.versionRepo.GetBySkillAndVersion(ctx, skill.ID, version)
 	if err != nil {
-		return nil, "", err
+		return skill, nil, err
 	}
 	if ver == nil {
-		return nil, "", fmt.Errorf("version %s not found", version)
+		return skill, nil, fmt.Errorf("version %s not found", version)
 	}
+	return skill, ver, nil
+}
 
-	// Get archive from git
-	archive, err := s.fileStore.Archive(skill.OwnerHandle, slug, version)
+// Download returns a zip archive for a skill version along with its fingerprint.
+func (s *SkillService) Download(ctx context.Context, slug, version string, identityHash string, viewer *model.User) (*DownloadResult, error) {
+	skill, ver, err := s.ResolveVersion(ctx, slug, version, viewer)
 	if err != nil {
-		return nil, "", fmt.Errorf("create archive: %w", err)
+		return nil, err
 	}
 
-	// Record download (deduplicate)
+	archive, err := s.fileStore.Archive(skill.OwnerHandle, slug, ver.Version)
+	if err != nil {
+		return nil, fmt.Errorf("create archive: %w", err)
+	}
+
+	// Record download (deduplicate) — best-effort, not fatal.
 	if identityHash != "" {
 		isNew, _ := s.downloadRepo.RecordDownload(ctx, skill.ID, ver.ID, identityHash)
 		if isNew {
@@ -360,8 +402,12 @@ func (s *SkillService) Download(ctx context.Context, slug, version string, ident
 		}
 	}
 
-	filename := fmt.Sprintf("%s-%s.zip", slug, version)
-	return archive, filename, nil
+	return &DownloadResult{
+		Archive:     archive,
+		Filename:    fmt.Sprintf("%s-%s.zip", slug, ver.Version),
+		Fingerprint: ver.Fingerprint,
+		Version:     ver.Version,
+	}, nil
 }
 
 // GetFile reads a single file from a skill version.

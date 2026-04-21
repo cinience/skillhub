@@ -182,6 +182,16 @@ func New(cfg *config.Config) (*Server, error) {
 		deviceRoutes.POST("/token", deviceHandler.PollToken)
 	}
 
+	// API v1 device auth aliases — animus CLI & other API clients expect /api/v1 prefix.
+	// Same handlers, different mount point.
+	apiDeviceRoutes := router.Group("/api/v1/auth/device")
+	apiDeviceRoutes.Use(rateLimiter.RateLimit("write"))
+	{
+		apiDeviceRoutes.POST("/code", deviceHandler.RequestCode)
+		apiDeviceRoutes.POST("/verify", middleware.RequireAuth(authSvc), deviceHandler.VerifySubmit)
+		apiDeviceRoutes.POST("/token", deviceHandler.PollToken)
+	}
+
 	// Login/logout routes (server-side cookie management)
 	webRoutes := router.Group("")
 	webRoutes.Use(middleware.OptionalAuth(authSvc))

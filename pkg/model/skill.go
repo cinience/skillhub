@@ -17,6 +17,7 @@ type Skill struct {
 	Visibility       string       `gorm:"column:visibility;type:varchar(20);not null;default:'private'" json:"visibility"`
 	ModerationStatus string       `gorm:"column:moderation_status;type:varchar(20);not null;default:'approved'" json:"moderationStatus"`
 	IsSuspicious     bool         `gorm:"column:is_suspicious;not null;default:false" json:"isSuspicious"`
+	Kind             string       `gorm:"column:kind;type:varchar(20);not null;default:'custom';index" json:"kind"`
 	Category         string       `gorm:"column:category;type:varchar(64);not null;default:'general';index" json:"category"`
 	Tags             StringArray  `gorm:"column:tags;type:text;not null;default:'[]'" json:"tags"`
 	Downloads        int64        `gorm:"column:downloads;not null;default:0;index" json:"downloads"`
@@ -61,6 +62,40 @@ var ValidCategories = []string{
 func IsValidCategory(cat string) bool {
 	for _, c := range ValidCategories {
 		if c == cat {
+			return true
+		}
+	}
+	return false
+}
+
+// ValidKinds lists the allowed skill kinds.
+// builtin — animus 官方内置
+// domain  — 领域包（由合作方/组织维护）
+// learned — animus Learner 自动产出
+// custom  — 默认，用户手工撰写
+var ValidKinds = []string{"builtin", "domain", "learned", "custom"}
+
+// IsValidKind checks if a kind string is allowed.
+func IsValidKind(kind string) bool {
+	for _, k := range ValidKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// ReservedNamespaces are slug prefixes reserved for animus official distribution.
+// Only admins may publish to these prefixes.
+var ReservedNamespaces = []string{
+	"animus-builtin/",
+	"animus-domain/",
+}
+
+// IsReservedNamespace checks if a slug falls into a reserved namespace prefix.
+func IsReservedNamespace(slug string) bool {
+	for _, prefix := range ReservedNamespaces {
+		if len(slug) > len(prefix) && slug[:len(prefix)] == prefix {
 			return true
 		}
 	}
