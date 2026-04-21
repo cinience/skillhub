@@ -30,6 +30,8 @@ type OAuthProvider struct {
 	Scopes       string
 }
 
+var oauthHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
 // OAuthService handles OAuth2 authentication flows.
 type OAuthService struct {
 	providers  map[string]*OAuthProvider
@@ -38,6 +40,7 @@ type OAuthService struct {
 	authSvc    *Service
 	baseURL    string
 	stateStore sync.Map // state -> expiresAt (server-side CSRF store)
+	done       chan struct{}
 }
 
 // NewOAuthService creates a new OAuthService from config.
@@ -60,23 +63,34 @@ func NewOAuthService(cfg map[string]config.OAuthProviderConfig, oauthRepo *repos
 		userRepo:  userRepo,
 		authSvc:   authSvc,
 		baseURL:   baseURL,
+		done:      make(chan struct{}),
 	}
 	go svc.cleanupStates()
 	return svc
+}
+
+// Close stops the cleanup goroutine.
+func (s *OAuthService) Close() {
+	close(s.done)
 }
 
 // cleanupStates periodically removes expired OAuth state entries.
 func (s *OAuthService) cleanupStates() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		now := time.Now()
-		s.stateStore.Range(func(key, value any) bool {
-			if now.After(value.(time.Time)) {
-				s.stateStore.Delete(key)
-			}
-			return true
-		})
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			s.stateStore.Range(func(key, value any) bool {
+				if now.After(value.(time.Time)) {
+					s.stateStore.Delete(key)
+				}
+				return true
+			})
+		case <-s.done:
+			return
+		}
 	}
 }
 
@@ -310,13 +324,13 @@ func exchangeCode(p *OAuthProvider, code, redirectURI string) (string, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oauthHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	var result struct {
 		AccessToken string `json:"access_token"`
@@ -342,13 +356,13 @@ func fetchUserInfo(p *OAuthProvider, accessToken string) (*OAuthUserInfo, error)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := oauthHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {

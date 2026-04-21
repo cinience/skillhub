@@ -12,8 +12,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"time"
+
 	"github.com/cinience/skillhub/pkg/config"
 )
+
+var mirrorHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 type MirrorService struct {
 	gitStore *GitStore
@@ -136,7 +140,7 @@ func (m *MirrorService) ensureGitHubRepo(ctx context.Context, repoName, baseURL 
 	req.Header.Set("Authorization", "Bearer "+m.token)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := mirrorHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -161,7 +165,7 @@ func (m *MirrorService) ensureGitLabRepo(ctx context.Context, repoName, baseURL 
 	req.Header.Set("PRIVATE-TOKEN", m.token)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := mirrorHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -183,7 +187,7 @@ func (m *MirrorService) ensureGiteaRepo(ctx context.Context, repoName, baseURL s
 	req.Header.Set("Authorization", "token "+m.token)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := mirrorHTTPClient.Do(req)
 	if err != nil {
 		return "", err
 	}

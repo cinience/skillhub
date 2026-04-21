@@ -121,7 +121,7 @@ type SearchResult struct {
 
 // Search performs a full-text search with optional sorting and filtering.
 func (c *Client) Search(ctx context.Context, query string, limit, offset int, sort []string, filters string) (*SearchResult, error) {
-	q := bleve.NewQueryStringQuery(query)
+	q := bleve.NewMatchQuery(query)
 	searchReq := bleve.NewSearchRequestOptions(q, limit, offset, false)
 	searchReq.Fields = []string{"*"}
 

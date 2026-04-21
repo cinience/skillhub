@@ -192,7 +192,7 @@ func randomDeviceCode() (string, error) {
 }
 
 func randomUserCode() (string, error) {
-	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no I/O/0/1
+	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no I/O/0/1, len=32 (no modulo bias: 256%32==0)
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
 		return "", err

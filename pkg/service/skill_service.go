@@ -12,7 +12,6 @@ import (
 	"path"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -20,6 +19,7 @@ import (
 	"github.com/cinience/skillhub/pkg/model"
 	"github.com/cinience/skillhub/pkg/repository"
 	"github.com/cinience/skillhub/pkg/search"
+	"github.com/cinience/skillhub/pkg/semver"
 	"github.com/cinience/skillhub/pkg/store"
 	"gorm.io/gorm"
 )
@@ -151,15 +151,24 @@ func (s *SkillService) PublishVersion(ctx context.Context, user *model.User, req
 	// Check version is greater than latest
 	latest, _ := s.versionRepo.GetLatest(ctx, skill.ID)
 	if latest != nil {
-		if compareSemver(version, latest.Version) <= 0 {
+		if semver.Compare(version, latest.Version) <= 0 {
 			return nil, nil, fmt.Errorf("version %s must be greater than current latest %s", version, latest.Version)
 		}
 	}
 
-	// Compute file metadata and fingerprint
+	// Validate and compute file metadata and fingerprint
 	var filesMeta []model.VersionFile
 	var hashParts []string
 	for path, content := range req.Files {
+		cleanPath := sanitizeFilePath(path)
+		if cleanPath == "" {
+			return nil, nil, fmt.Errorf("invalid file path: %s", path)
+		}
+		if cleanPath != path {
+			req.Files[cleanPath] = content
+			delete(req.Files, path)
+			path = cleanPath
+		}
 		h := sha256.Sum256(content)
 		fileHash := hex.EncodeToString(h[:])
 		filesMeta = append(filesMeta, model.VersionFile{
@@ -587,19 +596,21 @@ func (s *SkillService) Undelete(ctx context.Context, user *model.User, slug stri
 	return nil
 }
 
-// Star adds a star to a skill.
+// Star adds a star to a skill (atomic transaction).
 func (s *SkillService) Star(ctx context.Context, userID uuid.UUID, slug string) error {
 	skill, err := s.skillRepo.GetBySlugOrAlias(ctx, slug)
 	if err != nil || skill == nil {
 		return fmt.Errorf("skill not found")
 	}
-	if err := s.starRepo.Star(ctx, userID, skill.ID); err != nil {
-		return err
-	}
-	return s.skillRepo.UpdateStarsCount(ctx, skill.ID, 1)
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.starRepo.Star(ctx, userID, skill.ID); err != nil {
+			return err
+		}
+		return s.skillRepo.UpdateStarsCount(ctx, skill.ID, 1)
+	})
 }
 
-// Unstar removes a star from a skill.
+// Unstar removes a star from a skill (atomic transaction).
 func (s *SkillService) Unstar(ctx context.Context, userID uuid.UUID, slug string) error {
 	skill, err := s.skillRepo.GetBySlugOrAlias(ctx, slug)
 	if err != nil || skill == nil {
@@ -610,12 +621,14 @@ func (s *SkillService) Unstar(ctx context.Context, userID uuid.UUID, slug string
 		return err
 	}
 	if !starred {
-		return nil // not starred, nothing to do
+		return nil
 	}
-	if err := s.starRepo.Unstar(ctx, userID, skill.ID); err != nil {
-		return err
-	}
-	return s.skillRepo.UpdateStarsCount(ctx, skill.ID, -1)
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.starRepo.Unstar(ctx, userID, skill.ID); err != nil {
+			return err
+		}
+		return s.skillRepo.UpdateStarsCount(ctx, skill.ID, -1)
+	})
 }
 
 const (
@@ -687,30 +700,3 @@ func extractFrontmatter(content []byte) json.RawMessage {
 	return result
 }
 
-// compareSemver compares two semver strings. Returns -1, 0, or 1.
-func compareSemver(a, b string) int {
-	aParts := parseSemverParts(a)
-	bParts := parseSemverParts(b)
-	for i := 0; i < 3; i++ {
-		if aParts[i] < bParts[i] {
-			return -1
-		}
-		if aParts[i] > bParts[i] {
-			return 1
-		}
-	}
-	return 0
-}
-
-func parseSemverParts(v string) [3]int {
-	// Strip pre-release and build metadata
-	if idx := strings.IndexAny(v, "-+"); idx != -1 {
-		v = v[:idx]
-	}
-	parts := strings.SplitN(v, ".", 3)
-	var result [3]int
-	for i := 0; i < 3 && i < len(parts); i++ {
-		result[i], _ = strconv.Atoi(parts[i])
-	}
-	return result
-}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -26,9 +27,14 @@ import (
 )
 
 type Server struct {
-	router     *gin.Engine
-	cfg        *config.Config
-	httpServer *http.Server
+	router       *gin.Engine
+	cfg          *config.Config
+	httpServer   *http.Server
+	db           *gorm.DB
+	searchClient *search.Client
+	oauthSvc     *auth.OAuthService
+	deviceSvc    *auth.DeviceAuthService
+	rateLimiter  *middleware.RateLimiter
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -153,7 +159,8 @@ func New(cfg *config.Config) (*Server, error) {
 	webAuthHandler := handler.NewWebAuthHandler(authSvc)
 
 	// Router
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
 	router.Use(middleware.RequestID())
 	router.Use(middleware.Logging())
 	router.Use(middleware.SecurityHeaders())
@@ -297,26 +304,67 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Mirror push on startup if configured
 	if mirrorSvc.Enabled() && cfg.GitStore.Mirror.PushOnStartup {
-		go mirrorSvc.PushAll(nil)
+		go func() {
+			if err := mirrorSvc.PushAll(context.Background()); err != nil {
+				log.Printf("mirror push on startup failed: %v", err)
+			}
+		}()
 	}
 
-	return &Server{router: router, cfg: cfg}, nil
+	return &Server{
+		router:       router,
+		cfg:          cfg,
+		db:           db,
+		searchClient: searchClient,
+		oauthSvc:     oauthSvc,
+		deviceSvc:    deviceSvc,
+		rateLimiter:  rateLimiter,
+	}, nil
 }
 
 func (s *Server) Run() error {
 	addr := fmt.Sprintf("%s:%d", s.cfg.Server.Host, s.cfg.Server.Port)
 	s.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: s.router,
+		Addr:              addr,
+		Handler:           s.router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 	return s.httpServer.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	var firstErr error
 	if s.httpServer != nil {
-		return s.httpServer.Shutdown(ctx)
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			firstErr = err
+		}
 	}
-	return nil
+	if s.deviceSvc != nil {
+		s.deviceSvc.Close()
+	}
+	if s.oauthSvc != nil {
+		s.oauthSvc.Close()
+	}
+	if s.rateLimiter != nil {
+		s.rateLimiter.Close()
+	}
+	if s.searchClient != nil {
+		if err := s.searchClient.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if s.db != nil {
+		if sqlDB, err := s.db.DB(); err == nil {
+			if err := sqlDB.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
 }
 
 // autoSetup creates an admin user on first startup if SKILLHUB_ADMIN_USER

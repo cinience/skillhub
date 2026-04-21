@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log"
+	"mime"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -41,10 +43,12 @@ func (h *DownloadHandler) Download(c *gin.Context) {
 	}
 	defer archive.Close()
 
-	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 	c.Header("Content-Type", "application/zip")
 
-	io.Copy(c.Writer, archive)
+	if _, err := io.Copy(c.Writer, archive); err != nil {
+		log.Printf("download stream error for %s: %v", slug, err)
+	}
 }
 
 // Resolve handles GET /api/v1/resolve

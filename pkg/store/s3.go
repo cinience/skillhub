@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cinience/skillhub/pkg/semver"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -240,7 +242,7 @@ func (b *S3Backend) ListVersions(owner, slug string) ([]string, error) {
 
 	// Sort descending by semver
 	sort.Slice(versions, func(i, j int) bool {
-		return compareSemver(versions[i], versions[j]) > 0
+		return semver.Compare(versions[i], versions[j]) > 0
 	})
 
 	return versions, nil
@@ -272,6 +274,8 @@ func (b *S3Backend) Rename(owner, oldSlug, newSlug string) error {
 		Prefix: &oldPrefix,
 	})
 
+	// Phase 1: Copy all objects to new prefix
+	var oldKeys []string
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
@@ -281,7 +285,6 @@ func (b *S3Backend) Rename(owner, oldSlug, newSlug string) error {
 			newKey := newPrefix + strings.TrimPrefix(*obj.Key, oldPrefix)
 			copySource := fmt.Sprintf("%s/%s", b.bucket, *obj.Key)
 
-			// Copy to new key
 			_, err := b.client.CopyObject(ctx, &s3.CopyObjectInput{
 				Bucket:     &b.bucket,
 				Key:        &newKey,
@@ -290,44 +293,20 @@ func (b *S3Backend) Rename(owner, oldSlug, newSlug string) error {
 			if err != nil {
 				return fmt.Errorf("copy %s: %w", *obj.Key, err)
 			}
+			oldKeys = append(oldKeys, *obj.Key)
+		}
+	}
 
-			// Delete old key
-			_, err = b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
-				Bucket: &b.bucket,
-				Key:    obj.Key,
-			})
-			if err != nil {
-				return fmt.Errorf("delete %s: %w", *obj.Key, err)
-			}
+	// Phase 2: Delete all old objects
+	for _, key := range oldKeys {
+		k := key
+		if _, err := b.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket: &b.bucket,
+			Key:    &k,
+		}); err != nil {
+			log.Printf("warning: failed to delete old key %s during rename: %v", key, err)
 		}
 	}
 
 	return nil
-}
-
-// compareSemver compares two semver strings. Returns -1, 0, or 1.
-func compareSemver(a, b string) int {
-	ap := parseSemverParts(a)
-	bp := parseSemverParts(b)
-	for i := 0; i < 3; i++ {
-		if ap[i] < bp[i] {
-			return -1
-		}
-		if ap[i] > bp[i] {
-			return 1
-		}
-	}
-	return 0
-}
-
-func parseSemverParts(v string) [3]int {
-	if idx := strings.IndexAny(v, "-+"); idx != -1 {
-		v = v[:idx]
-	}
-	parts := strings.SplitN(v, ".", 3)
-	var result [3]int
-	for i := 0; i < 3 && i < len(parts); i++ {
-		result[i], _ = strconv.Atoi(parts[i])
-	}
-	return result
 }

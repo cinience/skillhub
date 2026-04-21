@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/cinience/skillhub/pkg/semver"
 
 	"github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss"
 	osscredentials "github.com/aliyun/alibabacloud-oss-go-sdk-v2/oss/credentials"
@@ -219,7 +222,7 @@ func (b *OSSBackend) ListVersions(owner, slug string) ([]string, error) {
 	}
 
 	sort.Slice(versions, func(i, j int) bool {
-		return compareSemver(versions[i], versions[j]) > 0
+		return semver.Compare(versions[i], versions[j]) > 0
 	})
 
 	return versions, nil
@@ -246,6 +249,8 @@ func (b *OSSBackend) Rename(owner, oldSlug, newSlug string) error {
 	oldPrefix := fmt.Sprintf("%s/%s/%s/", b.prefix, owner, oldSlug)
 	newPrefix := fmt.Sprintf("%s/%s/%s/", b.prefix, owner, newSlug)
 
+	// Phase 1: Copy all objects to new prefix
+	var oldKeys []string
 	var continuationToken *string
 	for {
 		out, err := b.client.ListObjectsV2(ctx, &oss.ListObjectsV2Request{
@@ -261,30 +266,32 @@ func (b *OSSBackend) Rename(owner, oldSlug, newSlug string) error {
 			newKey := newPrefix + strings.TrimPrefix(*obj.Key, oldPrefix)
 			copySource := fmt.Sprintf("/%s/%s", b.bucket, *obj.Key)
 
-			// Copy to new key
 			_, err := b.client.CopyObject(ctx, &oss.CopyObjectRequest{
-				Bucket:       &b.bucket,
-				Key:          &newKey,
-				SourceKey:    &copySource,
+				Bucket:    &b.bucket,
+				Key:       &newKey,
+				SourceKey: &copySource,
 			})
 			if err != nil {
 				return fmt.Errorf("copy %s: %w", *obj.Key, err)
 			}
-
-			// Delete old key
-			_, err = b.client.DeleteObject(ctx, &oss.DeleteObjectRequest{
-				Bucket: &b.bucket,
-				Key:    obj.Key,
-			})
-			if err != nil {
-				return fmt.Errorf("delete %s: %w", *obj.Key, err)
-			}
+			oldKeys = append(oldKeys, *obj.Key)
 		}
 
 		if !out.IsTruncated {
 			break
 		}
 		continuationToken = out.NextContinuationToken
+	}
+
+	// Phase 2: Delete all old objects
+	for _, key := range oldKeys {
+		k := key
+		if _, err := b.client.DeleteObject(ctx, &oss.DeleteObjectRequest{
+			Bucket: &b.bucket,
+			Key:    &k,
+		}); err != nil {
+			log.Printf("warning: failed to delete old key %s during rename: %v", key, err)
+		}
 	}
 
 	return nil

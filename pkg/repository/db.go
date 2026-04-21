@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/cinience/skillhub/pkg/config"
 	"github.com/cinience/skillhub/pkg/model"
@@ -49,6 +50,12 @@ func NewDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
 	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+
+	if !cfg.AutoMigrate {
+		return db, nil
+	}
 
 	// AutoMigrate all models
 	if err := db.AutoMigrate(
@@ -100,11 +107,17 @@ func migrateVisibility(db *gorm.DB) {
 func seedReservedSlugs(db *gorm.DB) {
 	slugs := []string{"admin", "api", "auth", "login", "register", "search", "settings", "system", "help", "about"}
 	reason := "system reserved"
+	var created int
 	for _, slug := range slugs {
-		db.Where("slug = ?", slug).FirstOrCreate(&model.ReservedSlug{
+		result := db.Where("slug = ?", slug).FirstOrCreate(&model.ReservedSlug{
 			Slug:   slug,
 			Reason: &reason,
 		})
+		if result.RowsAffected > 0 {
+			created++
+		}
 	}
-	log.Println("database: reserved slugs seeded")
+	if created > 0 {
+		log.Printf("database: seeded %d new reserved slugs", created)
+	}
 }

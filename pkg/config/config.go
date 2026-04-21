@@ -30,6 +30,7 @@ type DatabaseConfig struct {
 	URL          string `yaml:"url"`    // SQLite file path or PostgreSQL DSN
 	MaxOpenConns int    `yaml:"max_open_conns"`
 	MaxIdleConns int    `yaml:"max_idle_conns"`
+	AutoMigrate  bool   `yaml:"auto_migrate"`
 }
 
 type SearchConfig struct {
@@ -116,6 +117,7 @@ func DefaultConfig() *Config {
 			URL:          "./data/skillhub.db",
 			MaxOpenConns: 25,
 			MaxIdleConns: 5,
+			AutoMigrate:  true,
 		},
 		Search: SearchConfig{
 			IndexPath: "./data/skills.bleve",

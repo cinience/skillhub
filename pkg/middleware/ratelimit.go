@@ -25,8 +25,8 @@ func (b *rateBucket) allow() (bool, int, time.Time) {
 	now := time.Now()
 	cutoff := now.Add(-b.window)
 
-	// Slide the window
-	valid := b.requests[:0]
+	// Slide the window — fresh slice to release old backing array
+	valid := make([]time.Time, 0, len(b.requests))
 	for _, t := range b.requests {
 		if t.After(cutoff) {
 			valid = append(valid, t)
@@ -50,10 +50,43 @@ func (b *rateBucket) allow() (bool, int, time.Time) {
 type RateLimiter struct {
 	cfg     config.RateLimitConfig
 	buckets sync.Map // key -> *rateBucket
+	done    chan struct{}
 }
 
 func NewRateLimiter(cfg config.RateLimitConfig) *RateLimiter {
-	return &RateLimiter{cfg: cfg}
+	rl := &RateLimiter{cfg: cfg, done: make(chan struct{})}
+	go rl.cleanup()
+	return rl
+}
+
+// Close stops the cleanup goroutine.
+func (rl *RateLimiter) Close() {
+	close(rl.done)
+}
+
+// cleanup periodically evicts stale buckets to prevent unbounded memory growth.
+func (rl *RateLimiter) cleanup() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			rl.buckets.Range(func(key, value any) bool {
+				b := value.(*rateBucket)
+				b.mu.Lock()
+				if len(b.requests) == 0 || now.Sub(b.requests[len(b.requests)-1]) > b.window {
+					b.mu.Unlock()
+					rl.buckets.Delete(key)
+				} else {
+					b.mu.Unlock()
+				}
+				return true
+			})
+		case <-rl.done:
+			return
+		}
+	}
 }
 
 func (rl *RateLimiter) getBucket(key string, limit int, windowSecs int) *rateBucket {

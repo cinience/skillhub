@@ -148,7 +148,7 @@ func (h *SkillHandler) Versions(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": versions})
+	c.JSON(http.StatusOK, gin.H{"versions": versions})
 }
 
 // Version handles GET /api/v1/skills/:slug/versions/:version

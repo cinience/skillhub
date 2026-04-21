@@ -28,7 +28,7 @@ export default function SkillDetail() {
       .then(r => setSkill(r))
       .catch(() => setNotFound(true));
     getVersions(slug)
-      .then(r => setVersions(r.versions || []))
+      .then(r => setVersions(r.versions ?? []))
       .catch(e => console.error('Failed to load skill data:', e));
     // Load SKILL.md content
     getFile(slug, 'latest', 'SKILL.md')

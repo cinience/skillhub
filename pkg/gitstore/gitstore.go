@@ -9,8 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
+
+	"github.com/cinience/skillhub/pkg/semver"
 	"sync"
 	"time"
 
@@ -322,7 +323,7 @@ func (g *GitStore) ListTags(owner, slug string) ([]string, error) {
 
 	// Sort descending by semver
 	sort.Slice(versions, func(i, j int) bool {
-		return compareSemver(versions[i], versions[j]) > 0
+		return semver.Compare(versions[i], versions[j]) > 0
 	})
 	return versions, nil
 }
@@ -364,31 +365,4 @@ func (g *GitStore) Mirror(owner, slug, destPath string) error {
 // BasePath returns the base path of the git store.
 func (g *GitStore) BasePath() string {
 	return g.basePath
-}
-
-// compareSemver compares two semver strings. Returns -1, 0, or 1.
-func compareSemver(a, b string) int {
-	ap := parseSemverParts(a)
-	bp := parseSemverParts(b)
-	for i := 0; i < 3; i++ {
-		if ap[i] < bp[i] {
-			return -1
-		}
-		if ap[i] > bp[i] {
-			return 1
-		}
-	}
-	return 0
-}
-
-func parseSemverParts(v string) [3]int {
-	if idx := strings.IndexAny(v, "-+"); idx != -1 {
-		v = v[:idx]
-	}
-	parts := strings.SplitN(v, ".", 3)
-	var result [3]int
-	for i := 0; i < 3 && i < len(parts); i++ {
-		result[i], _ = strconv.Atoi(parts[i])
-	}
-	return result
 }
