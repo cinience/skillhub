@@ -376,13 +376,23 @@ func (s *PluginService) Publish(ctx context.Context, input PluginPublishInput) (
 	return &PluginPublishResult{Plugin: plug, Version: ver}, nil
 }
 
-func (s *PluginService) Get(ctx context.Context, ref string) (*model.PluginWithOwner, error) {
+func (s *PluginService) Get(ctx context.Context, ref string, viewers ...*model.User) (*model.PluginWithOwner, error) {
 	p, err := s.resolvePluginRef(ctx, ref, false)
 	if err != nil {
 		return nil, fmt.Errorf("get plugin: %w", err)
 	}
-	if !isPublicPlugin(p) {
+	if !s.canReadPlugin(ctx, p, firstViewer(viewers)) {
 		return nil, fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
+	}
+	return p, nil
+}
+
+// GetByID resolves a Plugin by stable registry ID under the same authorization
+// policy as canonical-name reads.
+func (s *PluginService) GetByID(ctx context.Context, id uuid.UUID, viewer *model.User) (*model.PluginWithOwner, error) {
+	p, err := s.pluginRepo.GetWithOwnerByID(ctx, id)
+	if err != nil || !s.canReadPlugin(ctx, p, viewer) {
+		return nil, fmt.Errorf("%w: plugin %s", ErrNotFound, id)
 	}
 	return p, nil
 }
@@ -401,18 +411,18 @@ func (s *PluginService) List(ctx context.Context, opts repository.PluginListOpti
 	return s.pluginRepo.List(ctx, opts)
 }
 
-func (s *PluginService) Versions(ctx context.Context, ref string) ([]model.PluginVersion, error) {
+func (s *PluginService) Versions(ctx context.Context, ref string, viewers ...*model.User) ([]model.PluginVersion, error) {
 	p, err := s.resolvePluginRef(ctx, ref, false)
 	if err != nil {
 		return nil, fmt.Errorf("get plugin: %w", err)
 	}
-	if !isPublicPlugin(p) {
+	if !s.canReadPlugin(ctx, p, firstViewer(viewers)) {
 		return nil, fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
 	}
 	return s.pluginRepo.ListVersions(ctx, p.ID)
 }
 
-func (s *PluginService) GetFile(ctx context.Context, ref, version, filePath string) ([]byte, error) {
+func (s *PluginService) GetFile(ctx context.Context, ref, version, filePath string, viewers ...*model.User) ([]byte, error) {
 	filePath = store.SanitizeStorePath(filePath)
 	if filePath == "invalid" {
 		return nil, fmt.Errorf("%w: invalid file path", ErrValidation)
@@ -422,7 +432,7 @@ func (s *PluginService) GetFile(ctx context.Context, ref, version, filePath stri
 	if err != nil {
 		return nil, fmt.Errorf("get plugin: %w", err)
 	}
-	if !isPublicPlugin(p) {
+	if !s.canReadPlugin(ctx, p, firstViewer(viewers)) {
 		return nil, fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
 	}
 
@@ -446,12 +456,12 @@ func (s *PluginService) GetFile(ctx context.Context, ref, version, filePath stri
 	return data, nil
 }
 
-func (s *PluginService) Download(ctx context.Context, ref, version string) (io.ReadCloser, string, error) {
+func (s *PluginService) Download(ctx context.Context, ref, version string, viewers ...*model.User) (io.ReadCloser, string, error) {
 	p, err := s.resolvePluginRef(ctx, ref, false)
 	if err != nil {
 		return nil, "", fmt.Errorf("get plugin: %w", err)
 	}
-	if !isPublicPlugin(p) {
+	if !s.canReadPlugin(ctx, p, firstViewer(viewers)) {
 		return nil, "", fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
 	}
 
@@ -488,6 +498,26 @@ func (s *PluginService) Download(ctx context.Context, ref, version string) (io.R
 
 func isPublicPlugin(p *model.PluginWithOwner) bool {
 	return p != nil && p.Visibility == "public" && p.ModerationStatus == "approved"
+}
+
+func firstViewer(viewers []*model.User) *model.User {
+	if len(viewers) == 0 {
+		return nil
+	}
+	return viewers[0]
+}
+
+func (s *PluginService) canReadPlugin(ctx context.Context, p *model.PluginWithOwner, viewer *model.User) bool {
+	if isPublicPlugin(p) {
+		return true
+	}
+	if p == nil || viewer == nil {
+		return false
+	}
+	if viewer.Role == "admin" || p.OwnerID == viewer.ID {
+		return true
+	}
+	return p.NamespaceID != nil && s.nsSvc != nil && s.nsSvc.IsMemberOrAdmin(ctx, *p.NamespaceID, viewer)
 }
 
 // ParseMultipartPublish extracts a PluginPublishInput from a multipart form.

@@ -790,6 +790,18 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/v1/plugins/by-id/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Plugins]
+      summary: Resolve a plugin by stable registry ID
+      description: Returns public approved plugins anonymously and private plugins to an authorized owner, administrator, or namespace member.
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Plugin" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/plugins/{slug}/undelete:
     parameters: [{ name: slug, in: path, required: true, schema: { type: string } }]
     post:

@@ -631,6 +631,16 @@ func TestPluginService_PublicReadsRejectPrivateAndYanked(t *testing.T) {
 	if _, err := fx.svc.GetFile(context.Background(), "guarded", "1.0.0", "plugin.json"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("private file: want ErrNotFound, got %v", err)
 	}
+	resolved, err := fx.svc.GetByID(context.Background(), result.Plugin.ID, fx.owner)
+	if err != nil || resolved.ID != result.Plugin.ID {
+		t.Fatalf("owner GetByID: plugin=%#v err=%v", resolved, err)
+	}
+	if _, err := fx.svc.GetFile(context.Background(), "guarded", "1.0.0", "plugin.json", fx.owner); err != nil {
+		t.Fatalf("owner private file: %v", err)
+	}
+	if _, err := fx.svc.GetByID(context.Background(), result.Plugin.ID, fx.other); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other GetByID: want ErrNotFound, got %v", err)
+	}
 
 	result.Plugin.Visibility = "public"
 	if err := fx.pluginRepo.Update(context.Background(), &result.Plugin); err != nil {

@@ -62,6 +62,20 @@ func (r *PluginRepo) GetWithOwner(ctx context.Context, slug string) (*model.Plug
 	return &p, nil
 }
 
+func (r *PluginRepo) GetWithOwnerByID(ctx context.Context, id uuid.UUID) (*model.PluginWithOwner, error) {
+	var p model.PluginWithOwner
+	err := r.db.WithContext(ctx).
+		Table("plugins").Select(pluginWithOwnerSelect).
+		Joins("LEFT JOIN users ON users.id = plugins.owner_id").
+		Joins("LEFT JOIN namespaces ON namespaces.id = plugins.namespace_id").
+		Where("plugins.id = ? AND plugins.soft_deleted_at IS NULL", id).
+		First(&p).Error
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 // GetByNSAndSlug looks up a plugin by namespace ID and slug.
 func (r *PluginRepo) GetByNSAndSlug(ctx context.Context, namespaceID uuid.UUID, slug string) (*model.PluginWithOwner, error) {
 	var p model.PluginWithOwner

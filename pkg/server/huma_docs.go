@@ -306,6 +306,7 @@ func registerOpenAPIDocs(api huma.API) {
 	registerDoc(doc, http.MethodDelete, "/api/v1/namespaces/{slug}/tokens/{id}", "namespace-tokens-revoke", "namespaces", "Revoke namespace token", security, (*docTokenIDInput)(nil), (*docOKOutput)(nil))
 
 	registerDoc(doc, http.MethodGet, "/api/v1/plugins", "plugins-list", "plugins", "List plugins", public, (*docListInput)(nil), (*docPluginListOutput)(nil))
+	registerDoc(doc, http.MethodGet, "/api/v1/plugins/by-id/{id}", "plugins-get-by-id", "plugins", "Get plugin by stable ID", public, (*docIDInput)(nil), (*docPluginOutput)(nil))
 	registerDoc(doc, http.MethodPost, "/api/v1/plugins", "plugins-publish", "plugins", "Publish plugin", security, (*docPluginPublishInput)(nil), (*docPluginOutput)(nil))
 	registerDoc(doc, http.MethodGet, "/api/v1/plugins/{slug}", "plugins-get", "plugins", "Get plugin", public, (*docSlugInput)(nil), (*docPluginOutput)(nil))
 	registerDoc(doc, http.MethodDelete, "/api/v1/plugins/{slug}", "plugins-delete", "plugins", "Delete plugin", security, (*docSlugInput)(nil), (*docOKOutput)(nil))

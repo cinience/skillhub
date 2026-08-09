@@ -146,6 +146,7 @@ func (s *Server) RegisterRoutes(r gin.IRouter) {
 
 		// Plugin endpoints (public read)
 		public.GET("/plugins", s.h.plugin.List)
+		public.GET("/plugins/by-id/:id", s.h.plugin.GetByID)
 		public.GET("/plugins/:slug", s.h.plugin.Get)
 		public.GET("/plugins/:slug/versions", s.h.plugin.Versions)
 		public.GET("/plugins/file", s.h.plugin.GetFile)

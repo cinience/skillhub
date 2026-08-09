@@ -57,6 +57,10 @@ export function getPlugin(slug: string): Promise<Plugin> {
   return apiFetch(`/plugins/${slug}`);
 }
 
+export function getPluginById(id: string): Promise<Plugin> {
+  return apiFetch(`/plugins/by-id/${encodeURIComponent(id)}`);
+}
+
 export function getPluginVersions(slug: string): Promise<{ versions: PluginVersion[] }> {
   return apiFetch(`/plugins/${slug}/versions`);
 }

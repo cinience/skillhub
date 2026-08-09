@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/saker-ai/skillhub/pkg/middleware"
 	"github.com/saker-ai/skillhub/pkg/model"
 	"github.com/saker-ai/skillhub/pkg/repository"
@@ -109,7 +110,27 @@ func (h *PluginHandler) List(c *gin.Context) {
 
 // GET /api/v1/plugins/:slug
 func (h *PluginHandler) Get(c *gin.Context) {
-	p, err := h.svc.Get(c.Request.Context(), extractPluginRef(c))
+	p, err := h.svc.Get(c.Request.Context(), extractPluginRef(c), middleware.GetUser(c))
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	version, err := h.svc.LatestVersion(c.Request.Context(), p.ID)
+	if err != nil {
+		writeInternalError(c, "resolve_plugin_version", err)
+		return
+	}
+	c.JSON(http.StatusOK, pluginToJSON(*p, version))
+}
+
+// GET /api/v1/plugins/by-id/:id
+func (h *PluginHandler) GetByID(c *gin.Context) {
+	id, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plugin id"})
+		return
+	}
+	p, err := h.svc.GetByID(c.Request.Context(), id, middleware.GetUser(c))
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -124,7 +145,7 @@ func (h *PluginHandler) Get(c *gin.Context) {
 
 // GET /api/v1/plugins/:slug/versions
 func (h *PluginHandler) Versions(c *gin.Context) {
-	versions, err := h.svc.Versions(c.Request.Context(), extractPluginRef(c))
+	versions, err := h.svc.Versions(c.Request.Context(), extractPluginRef(c), middleware.GetUser(c))
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -143,7 +164,7 @@ func (h *PluginHandler) GetFile(c *gin.Context) {
 		return
 	}
 
-	data, err := h.svc.GetFile(c.Request.Context(), ref, version, filePath)
+	data, err := h.svc.GetFile(c.Request.Context(), ref, version, filePath, middleware.GetUser(c))
 	if err != nil {
 		writeServiceError(c, err)
 		return
@@ -163,7 +184,7 @@ func (h *PluginHandler) Download(c *gin.Context) {
 		return
 	}
 
-	reader, etag, err := h.svc.Download(c.Request.Context(), ref, version)
+	reader, etag, err := h.svc.Download(c.Request.Context(), ref, version, middleware.GetUser(c))
 	if err != nil {
 		writeServiceError(c, err)
 		return
