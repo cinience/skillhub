@@ -157,13 +157,13 @@ export default function NamespaceDetail() {
           ever visible. */}
       {rawToken && (
         <div style={{
-          background: '#fef3c7',
-          border: '2px solid #f59e0b',
+          background: 'var(--warning-bg, #fef3c7)',
+          border: '2px solid var(--warning-border, #f59e0b)',
           padding: '1rem 1.25rem',
           borderRadius: '8px',
           marginBottom: '1.5rem',
         }}>
-          <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '0.5rem' }}>
+          <div style={{ fontWeight: 700, color: 'var(--warning-text, #92400e)', marginBottom: '0.5rem' }}>
             ⚠ {t('tokens.show_once_warning')}
           </div>
           <div style={{
@@ -171,12 +171,13 @@ export default function NamespaceDetail() {
             gap: '0.5rem',
             alignItems: 'center',
             fontFamily: 'monospace',
-            background: '#fff',
+            background: 'var(--code-bg, #fff)',
+            color: 'var(--text, #000)',
             padding: '0.5rem 0.75rem',
             borderRadius: '4px',
             wordBreak: 'break-all',
           }}>
-            <code style={{ flex: 1, color: '#000' }}>{rawToken}</code>
+            <code style={{ flex: 1, color: 'inherit' }}>{rawToken}</code>
             <button className="btn btn-secondary btn-small" onClick={handleCopy}>
               {copied ? t('common.copied') : t('common.copy')}
             </button>
@@ -304,7 +305,7 @@ export default function NamespaceDetail() {
                         <button
                           className="btn btn-secondary btn-small"
                           onClick={() => handleRevoke(tok.id)}
-                          style={{ color: '#dc2626' }}
+                          style={{ color: 'var(--danger, #dc2626)' }}
                         >
                           {t('tokens.revoke')}
                         </button>
