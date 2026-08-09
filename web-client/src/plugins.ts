@@ -13,8 +13,18 @@ export interface Plugin {
   versionsCount?: number;
   ownerHandle: string;
   latestVersionId?: string;
+  version?: string;
+  fingerprint?: string;
+  sha256Hash?: string;
+  files?: PluginFile[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PluginFile {
+  path: string;
+  size: number;
+  sha256: string;
 }
 
 export interface PluginVersion {
@@ -22,6 +32,8 @@ export interface PluginVersion {
   pluginId: string;
   version: string;
   fingerprint: string;
+  sha256Hash: string;
+  files: PluginFile[];
   changelog?: string;
   createdAt: string;
   yankedAt?: string;

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/saker-ai/skillhub/pkg/agentplugin"
 )
 
 func Plugins(args []string) {
@@ -103,10 +105,7 @@ func pluginPublish(args []string) {
 	}
 	manifest := pluginManifestForPublish(files)
 	if manifest == nil {
-		exitWithError("plugin.json or .codex-plugin/plugin.json is required")
-	}
-	if _, ok := files["plugin.json"]; !ok {
-		files["plugin.json"] = manifest
+		exitWithError("plugin.json is required")
 	}
 	if slug == "" {
 		slug = extractJSONField(manifest, "name")
@@ -257,13 +256,6 @@ func pluginInstall(args []string) {
 	}
 	dirName := localSlug(ref)
 	pluginDir := filepath.Join(parentDir, dirName)
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
-		exitWithError(fmt.Sprintf("creating directory: %v", err))
-	}
-	clearPluginDir(pluginDir)
-	if err := extractZipToDir(zipData, pluginDir); err != nil {
-		exitWithError(err.Error())
-	}
 	meta := map[string]interface{}{
 		"version":     version,
 		"installedAt": time.Now().UTC().Format(time.RFC3339),
@@ -271,7 +263,9 @@ func pluginInstall(args []string) {
 		"ref":         ref,
 	}
 	metaData, _ := json.MarshalIndent(meta, "", "  ")
-	_ = os.WriteFile(filepath.Join(pluginDir, ".installed.json"), metaData, 0o644)
+	if err := installPluginArchive(zipData, pluginDir, metaData); err != nil {
+		exitWithError(err.Error())
+	}
 	printSuccess(fmt.Sprintf("Installed plugin %s@%s to %s", ref, version, pluginDir))
 }
 
@@ -471,8 +465,7 @@ func loadPluginsDir() string {
 	return PluginsDir(cfg)
 }
 
-// ReadPluginDirFiles reads a Codex plugin directory. Unlike skill packages,
-// Codex plugin manifests live under the hidden .codex-plugin directory.
+// ReadPluginDirFiles reads an Agent Plugins package rooted at plugin.json.
 func ReadPluginDirFiles(dirPath string) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
@@ -480,7 +473,7 @@ func ReadPluginDirFiles(dirPath string) (map[string][]byte, error) {
 			return err
 		}
 		if info.IsDir() {
-			if strings.HasPrefix(info.Name(), ".") && path != dirPath && info.Name() != ".codex-plugin" {
+			if strings.HasPrefix(info.Name(), ".") && path != dirPath {
 				return filepath.SkipDir
 			}
 			return nil
@@ -508,9 +501,6 @@ func pluginManifestForPublish(files map[string][]byte) []byte {
 	if data, ok := files["plugin.json"]; ok {
 		return data
 	}
-	if data, ok := files[".codex-plugin/plugin.json"]; ok {
-		return data
-	}
 	return nil
 }
 
@@ -531,17 +521,52 @@ func pluginDisplayRef(m map[string]interface{}) string {
 	return "@" + ns + "/" + slug
 }
 
-func clearPluginDir(dir string) {
-	entries, err := os.ReadDir(dir)
+func installPluginArchive(zipData []byte, targetDir string, metadata []byte) error {
+	parent := filepath.Dir(targetDir)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return fmt.Errorf("creating plugin parent: %w", err)
+	}
+	staging, err := os.MkdirTemp(parent, ".plugin-install-*")
 	if err != nil {
-		return
+		return fmt.Errorf("creating plugin staging directory: %w", err)
 	}
-	for _, e := range entries {
-		if e.Name() == ".installed.json" {
-			continue
+	defer os.RemoveAll(staging)
+	if err := extractZipToDir(zipData, staging); err != nil {
+		return err
+	}
+	files, err := ReadPluginDirFiles(staging)
+	if err != nil {
+		return fmt.Errorf("reading extracted plugin: %w", err)
+	}
+	if _, err := agentplugin.ValidatePackage(files); err != nil {
+		return fmt.Errorf("validating extracted plugin: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(staging, ".installed.json"), metadata, 0o600); err != nil {
+		return fmt.Errorf("write install metadata: %w", err)
+	}
+
+	backup := staging + ".previous"
+	hadPrevious := false
+	if _, err := os.Stat(targetDir); err == nil {
+		if err := os.Rename(targetDir, backup); err != nil {
+			return fmt.Errorf("stage existing plugin: %w", err)
 		}
-		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+		hadPrevious = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect existing plugin: %w", err)
 	}
+	if err := os.Rename(staging, targetDir); err != nil {
+		if hadPrevious {
+			_ = os.Rename(backup, targetDir)
+		}
+		return fmt.Errorf("activate plugin: %w", err)
+	}
+	if hadPrevious {
+		if err := os.RemoveAll(backup); err != nil {
+			return fmt.Errorf("remove previous plugin: %w", err)
+		}
+	}
+	return nil
 }
 
 func extractZipToDir(zipData []byte, targetDir string) error {
@@ -550,9 +575,19 @@ func extractZipToDir(zipData []byte, targetDir string) error {
 		return fmt.Errorf("reading zip: %v", err)
 	}
 	stripPrefix := detectZipPrefix(zipReader)
+	if len(zipReader.File) > 500 {
+		return fmt.Errorf("plugin archive contains too many entries")
+	}
+	var total int64
 	for _, f := range zipReader.File {
+		if strings.Contains(f.Name, "\\") || !filepath.IsLocal(filepath.FromSlash(f.Name)) {
+			return fmt.Errorf("unsafe zip entry %q", f.Name)
+		}
 		if f.FileInfo().IsDir() {
 			continue
+		}
+		if f.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("plugin archive contains symlink %q", f.Name)
 		}
 		name := f.Name
 		if stripPrefix != "" {
@@ -561,10 +596,10 @@ func extractZipToDir(zipData []byte, targetDir string) error {
 				continue
 			}
 		}
-		targetPath := filepath.Join(targetDir, name)
-		if !strings.HasPrefix(filepath.Clean(targetPath), filepath.Clean(targetDir)+string(os.PathSeparator)) {
-			continue
+		if strings.Contains(name, "\\") || !filepath.IsLocal(filepath.FromSlash(name)) {
+			return fmt.Errorf("unsafe zip entry %q", name)
 		}
+		targetPath := filepath.Join(targetDir, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 			return fmt.Errorf("creating directory: %v", err)
 		}
@@ -572,16 +607,24 @@ func extractZipToDir(zipData []byte, targetDir string) error {
 		if err != nil {
 			return fmt.Errorf("opening zip entry: %v", err)
 		}
-		outFile, err := os.Create(targetPath)
+		outFile, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
 			_ = rc.Close()
 			return fmt.Errorf("creating file: %v", err)
 		}
-		_, copyErr := io.Copy(outFile, rc)
+		limited := io.LimitReader(rc, (64<<20)+1)
+		written, copyErr := io.Copy(outFile, limited)
 		closeErr := outFile.Close()
 		_ = rc.Close()
 		if copyErr != nil {
 			return fmt.Errorf("extracting file: %v", copyErr)
+		}
+		if written > 64<<20 {
+			return fmt.Errorf("zip entry %q exceeds 64 MiB", name)
+		}
+		total += written
+		if total > 512<<20 {
+			return fmt.Errorf("plugin archive exceeds 512 MiB")
 		}
 		if closeErr != nil {
 			return fmt.Errorf("closing file: %v", closeErr)

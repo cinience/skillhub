@@ -204,7 +204,7 @@ func (r *PluginRepo) CreateVersion(ctx context.Context, v *model.PluginVersion) 
 func (r *PluginRepo) GetVersion(ctx context.Context, pluginID uuid.UUID, version string) (*model.PluginVersion, error) {
 	var v model.PluginVersion
 	err := r.db.WithContext(ctx).
-		Where("plugin_id = ? AND version = ? AND soft_deleted_at IS NULL", pluginID, version).
+		Where("plugin_id = ? AND version = ? AND status = ? AND soft_deleted_at IS NULL", pluginID, version, "ready").
 		First(&v).Error
 	if err != nil {
 		return nil, err
@@ -215,7 +215,7 @@ func (r *PluginRepo) GetVersion(ctx context.Context, pluginID uuid.UUID, version
 func (r *PluginRepo) GetLatestVersion(ctx context.Context, pluginID uuid.UUID) (*model.PluginVersion, error) {
 	var v model.PluginVersion
 	err := r.db.WithContext(ctx).
-		Where("plugin_id = ? AND soft_deleted_at IS NULL AND yanked_at IS NULL", pluginID).
+		Where("plugin_id = ? AND status = ? AND soft_deleted_at IS NULL AND yanked_at IS NULL", pluginID, "ready").
 		Order("created_at DESC").
 		First(&v).Error
 	if err != nil {
@@ -227,7 +227,7 @@ func (r *PluginRepo) GetLatestVersion(ctx context.Context, pluginID uuid.UUID) (
 func (r *PluginRepo) ListVersions(ctx context.Context, pluginID uuid.UUID) ([]model.PluginVersion, error) {
 	var versions []model.PluginVersion
 	err := r.db.WithContext(ctx).
-		Where("plugin_id = ? AND soft_deleted_at IS NULL", pluginID).
+		Where("plugin_id = ? AND status = ? AND soft_deleted_at IS NULL", pluginID, "ready").
 		Order("created_at DESC").
 		Limit(100).
 		Find(&versions).Error

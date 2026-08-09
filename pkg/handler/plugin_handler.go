@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -92,7 +93,12 @@ func (h *PluginHandler) List(c *gin.Context) {
 
 	data := make([]gin.H, 0, len(plugins))
 	for _, p := range plugins {
-		data = append(data, pluginToJSON(p))
+		version, err := h.svc.LatestVersion(c.Request.Context(), p.ID)
+		if err != nil {
+			writeInternalError(c, "resolve_plugin_version", err)
+			return
+		}
+		data = append(data, pluginToJSON(p, version))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -108,7 +114,12 @@ func (h *PluginHandler) Get(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, pluginToJSON(*p))
+	version, err := h.svc.LatestVersion(c.Request.Context(), p.ID)
+	if err != nil {
+		writeInternalError(c, "resolve_plugin_version", err)
+		return
+	}
+	c.JSON(http.StatusOK, pluginToJSON(*p, version))
 }
 
 // GET /api/v1/plugins/:slug/versions
@@ -161,13 +172,17 @@ func (h *PluginHandler) Download(c *gin.Context) {
 
 	if etag != "" {
 		c.Header("ETag", etag)
+		if c.GetHeader("If-None-Match") == etag {
+			c.Status(http.StatusNotModified)
+			return
+		}
 	}
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", c.Query("slug")+".zip"))
 	io.Copy(c.Writer, reader)
 }
 
-func pluginToJSON(p model.PluginWithOwner) gin.H {
+func pluginToJSON(p model.PluginWithOwner, version *model.PluginVersion) gin.H {
 	result := gin.H{
 		"id":            p.ID,
 		"slug":          p.Slug,
@@ -189,6 +204,19 @@ func pluginToJSON(p model.PluginWithOwner) gin.H {
 	}
 	if p.LatestVersionID != nil {
 		result["latestVersionId"] = *p.LatestVersionID
+	}
+	if version != nil {
+		result["version"] = version.Version
+		result["fingerprint"] = version.Fingerprint
+		result["sha256Hash"] = version.SHA256Hash
+		var files []struct {
+			Path   string `json:"path"`
+			Size   int64  `json:"size"`
+			SHA256 string `json:"sha256"`
+		}
+		if err := json.Unmarshal(version.Files, &files); err == nil {
+			result["files"] = files
+		}
 	}
 
 	return result

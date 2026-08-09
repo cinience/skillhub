@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/saker-ai/skillhub/pkg/agentplugin"
 	"gorm.io/gorm"
 )
 
@@ -92,74 +93,73 @@ func TestBuildFilesManifest(t *testing.T) {
 
 func TestValidatePluginManifest_Valid(t *testing.T) {
 	manifest := []byte(`{
+		"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
 		"name": "test-plugin",
-		"version": "1.0.0",
-		"skills": {"entries": ["greet"]}
+		"version": "1.0.0"
 	}`)
 	files := map[string][]byte{
 		"plugin.json":           manifest,
 		"skills/greet/SKILL.md": []byte("# greet"),
 	}
 
-	err := validatePluginManifest(manifest, files)
+	_, err := agentplugin.ValidatePackage(files)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestValidatePluginManifest_MissingName(t *testing.T) {
-	manifest := []byte(`{"version": "1.0.0"}`)
+	manifest := []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","version": "1.0.0"}`)
 	files := map[string][]byte{"plugin.json": manifest}
 
-	err := validatePluginManifest(manifest, files)
+	_, err := agentplugin.ValidatePackage(files)
 	if err == nil {
 		t.Fatal("expected error for missing name")
 	}
 }
 
-func TestValidatePluginManifest_MissingVersion(t *testing.T) {
-	manifest := []byte(`{"name": "test"}`)
+func TestValidatePluginManifest_VersionOptional(t *testing.T) {
+	manifest := []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name": "test"}`)
 	files := map[string][]byte{"plugin.json": manifest}
 
-	err := validatePluginManifest(manifest, files)
-	if err == nil {
-		t.Fatal("expected error for missing version")
+	_, err := agentplugin.ValidatePackage(files)
+	if err != nil {
+		t.Fatalf("version must be optional: %v", err)
 	}
 }
 
-func TestValidatePluginManifest_MissingSkillFile(t *testing.T) {
+func TestValidatePluginManifest_RejectsLegacyInlineComponents(t *testing.T) {
 	manifest := []byte(`{
+		"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
 		"name": "test",
-		"version": "1.0.0",
 		"skills": {"entries": ["missing"]}
 	}`)
 	files := map[string][]byte{"plugin.json": manifest}
 
-	err := validatePluginManifest(manifest, files)
-	if err == nil {
-		t.Fatal("expected error for missing skill file")
+	parsed, err := agentplugin.ValidatePackage(files)
+	if err != nil || parsed.Name != "test" {
+		t.Fatalf("unknown top-level fields are report-and-ignore: parsed=%+v err=%v", parsed, err)
 	}
 }
 
-func TestValidatePluginManifest_CustomSkillsPath(t *testing.T) {
+func TestValidatePluginManifest_MCPFixedLocation(t *testing.T) {
 	manifest := []byte(`{
-		"name": "test",
-		"version": "1.0.0",
-		"skills": {"path": "my-skills", "entries": ["tool"]}
+		"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+		"name": "test"
 	}`)
 	files := map[string][]byte{
-		"plugin.json":             manifest,
-		"my-skills/tool/SKILL.md": []byte("# tool"),
+		"plugin.json": manifest,
+		"mcp.json":    []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{}}`),
 	}
 
-	err := validatePluginManifest(manifest, files)
+	_, err := agentplugin.ValidatePackage(files)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestValidatePluginManifest_InvalidJSON(t *testing.T) {
-	err := validatePluginManifest([]byte(`{not json`), nil)
+	_, err := agentplugin.ParseManifest([]byte(`{not json`))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}

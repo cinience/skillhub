@@ -8,10 +8,10 @@ import (
 	"github.com/saker-ai/skillhub/pkg/cli"
 )
 
-func TestReadPluginDirFilesIncludesCodexPluginManifest(t *testing.T) {
+func TestReadPluginDirFilesIncludesAgentPluginManifest(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	mustWriteFile(t, filepath.Join(dir, ".codex-plugin", "plugin.json"), `{"name":"demo","version":"1.0.0"}`)
+	mustWriteFile(t, filepath.Join(dir, "plugin.json"), `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"demo"}`)
 	mustWriteFile(t, filepath.Join(dir, ".git", "config"), "ignored")
 	mustWriteFile(t, filepath.Join(dir, ".env"), "ignored")
 	mustWriteFile(t, filepath.Join(dir, "skills", "demo", "SKILL.md"), "---\nname: demo\n---\n")
@@ -20,8 +20,8 @@ func TestReadPluginDirFilesIncludesCodexPluginManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadPluginDirFiles: %v", err)
 	}
-	if string(files[".codex-plugin/plugin.json"]) == "" {
-		t.Fatalf(".codex-plugin/plugin.json was not included: %+v", files)
+	if string(files["plugin.json"]) == "" {
+		t.Fatalf("plugin.json was not included: %+v", files)
 	}
 	if string(files["skills/demo/SKILL.md"]) == "" {
 		t.Fatalf("skills/demo/SKILL.md was not included: %+v", files)

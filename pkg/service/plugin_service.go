@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/saker-ai/skillhub/pkg/agentplugin"
 	"github.com/saker-ai/skillhub/pkg/model"
 	"github.com/saker-ai/skillhub/pkg/repository"
 	"github.com/saker-ai/skillhub/pkg/search"
@@ -23,7 +23,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var pluginSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,126}[a-z0-9]$`)
+var pluginSlugRe = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
 
 type PluginService struct {
 	db           *gorm.DB
@@ -147,13 +147,13 @@ func (s *PluginService) Publish(ctx context.Context, input PluginPublishInput) (
 		return nil, fmt.Errorf("%w: invalid semver %q", ErrValidation, input.Version)
 	}
 
-	// Validate plugin.json exists
-	manifestData, ok := input.Files["plugin.json"]
-	if !ok {
-		return nil, fmt.Errorf("%w: plugin.json is required at the archive root", ErrValidation)
-	}
-	if err := validatePluginManifest(manifestData, input.Files); err != nil {
+	manifest, err := agentplugin.ValidatePackage(input.Files)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	manifestData := input.Files["plugin.json"]
+	if manifest.Version != "" && manifest.Version != input.Version {
+		return nil, fmt.Errorf("%w: manifest version %s does not match release version %s", ErrValidation, manifest.Version, input.Version)
 	}
 
 	// Resolve namespace (same pattern as skills).
@@ -249,22 +249,8 @@ func (s *PluginService) Publish(ctx context.Context, input PluginPublishInput) (
 	filesManifest := buildFilesManifest(input.Files)
 	filesJSON, _ := json.Marshal(filesManifest)
 
-	// Store files via the standard Publish interface.
-	// We use "_plugins_" as the owner namespace to separate from skill storage.
-	storageSlug := pluginStorageSlug(input.NamespaceSlug, input.Slug)
-	_, storeErr := s.fileStore.Publish(ctx, store.PublishOpts{
-		Owner:   "_plugins_",
-		Slug:    storageSlug,
-		Version: input.Version,
-		Files:   input.Files,
-		Author:  input.OwnerID.String(),
-		Message: fmt.Sprintf("publish %s@%s", input.Slug, input.Version),
-	})
-	if storeErr != nil {
-		return nil, fmt.Errorf("store plugin files: %w", storeErr)
-	}
-
-	// Create version record and update plugin atomically
+	// Reserve the immutable version before touching storage. The unique index
+	// serializes concurrent publishers, while public reads ignore reservations.
 	versionID := uuid.New()
 	ver := model.PluginVersion{
 		ID:          versionID,
@@ -275,6 +261,7 @@ func (s *PluginService) Publish(ctx context.Context, input PluginPublishInput) (
 		Files:       model.JSONRaw(filesJSON),
 		CreatedBy:   input.OwnerID,
 		SHA256Hash:  fingerprint,
+		Status:      "publishing",
 	}
 	if input.Changelog != "" {
 		ver.Changelog = &input.Changelog
@@ -296,6 +283,28 @@ func (s *PluginService) Publish(ctx context.Context, input PluginPublishInput) (
 		}
 		if err := tx.Create(&ver).Error; err != nil {
 			return fmt.Errorf("create version: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	storageSlug := pluginStorageSlug(input.NamespaceSlug, input.Slug)
+	if _, err := s.fileStore.Publish(ctx, store.PublishOpts{
+		Owner: "_plugins_", Slug: storageSlug, Version: input.Version,
+		Files: input.Files, Author: input.OwnerID.String(),
+		Message: fmt.Sprintf("publish %s@%s", input.Slug, input.Version),
+	}); err != nil {
+		s.db.WithContext(ctx).Unscoped().Delete(&ver)
+		return nil, fmt.Errorf("store plugin files: %w", err)
+	}
+
+	// Expose the version and update plugin metadata atomically only after all
+	// package bytes have been durably stored.
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.PluginVersion{}).Where("id = ? AND status = ?", versionID, "publishing").
+			Update("status", "ready").Error; err != nil {
+			return fmt.Errorf("finalize version: %w", err)
 		}
 		if err := tx.Model(&model.Plugin{}).Where("id = ?", plug.ID).
 			Updates(map[string]any{
@@ -324,14 +333,14 @@ func (s *PluginService) Publish(ctx context.Context, input PluginPublishInput) (
 		}
 		return nil
 	}); err != nil {
-		if !errors.Is(err, ErrConflict) && !errors.Is(err, ErrValidation) {
-			if cleanErr := s.fileStore.DeleteVersion(ctx, "_plugins_", storageSlug, input.Version); cleanErr != nil {
-				s.loggerOrDefault().Warn("failed to clean orphaned plugin files",
-					"slug", input.Slug, "version", input.Version, "err", cleanErr)
-			}
+		if cleanErr := s.fileStore.DeleteVersion(ctx, "_plugins_", storageSlug, input.Version); cleanErr != nil {
+			s.loggerOrDefault().Warn("failed to clean orphaned plugin files",
+				"slug", input.Slug, "version", input.Version, "err", cleanErr)
 		}
+		s.db.WithContext(ctx).Unscoped().Delete(&ver)
 		return nil, err
 	}
+	ver.Status = "ready"
 	plug.LatestVersionID = &versionID
 
 	s.loggerOrDefault().Info("plugin published",
@@ -372,10 +381,20 @@ func (s *PluginService) Get(ctx context.Context, ref string) (*model.PluginWithO
 	if err != nil {
 		return nil, fmt.Errorf("get plugin: %w", err)
 	}
-	if p == nil {
+	if !isPublicPlugin(p) {
 		return nil, fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
 	}
 	return p, nil
+}
+
+// LatestVersion returns the immutable latest public version metadata used by
+// registry clients to pin a plugin before downloading any content.
+func (s *PluginService) LatestVersion(ctx context.Context, pluginID uuid.UUID) (*model.PluginVersion, error) {
+	version, err := s.pluginRepo.GetLatestVersion(ctx, pluginID)
+	if err != nil {
+		return nil, fmt.Errorf("get latest plugin version: %w", err)
+	}
+	return version, nil
 }
 
 func (s *PluginService) List(ctx context.Context, opts repository.PluginListOptions) ([]model.PluginWithOwner, string, error) {
@@ -387,7 +406,7 @@ func (s *PluginService) Versions(ctx context.Context, ref string) ([]model.Plugi
 	if err != nil {
 		return nil, fmt.Errorf("get plugin: %w", err)
 	}
-	if p == nil {
+	if !isPublicPlugin(p) {
 		return nil, fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
 	}
 	return s.pluginRepo.ListVersions(ctx, p.ID)
@@ -403,7 +422,7 @@ func (s *PluginService) GetFile(ctx context.Context, ref, version, filePath stri
 	if err != nil {
 		return nil, fmt.Errorf("get plugin: %w", err)
 	}
-	if p == nil {
+	if !isPublicPlugin(p) {
 		return nil, fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
 	}
 
@@ -413,6 +432,11 @@ func (s *PluginService) GetFile(ctx context.Context, ref, version, filePath stri
 			return nil, fmt.Errorf("%w: no versions found", ErrNotFound)
 		}
 		version = v.Version
+	} else {
+		v, err := s.pluginRepo.GetVersion(ctx, p.ID, version)
+		if err != nil || v.YankedAt != nil {
+			return nil, fmt.Errorf("%w: version %s not found", ErrNotFound, version)
+		}
 	}
 
 	data, err := s.fileStore.GetFile(ctx, "_plugins_", pluginStorageSlug(p.NamespaceSlug, p.Slug), version, filePath)
@@ -427,7 +451,7 @@ func (s *PluginService) Download(ctx context.Context, ref, version string) (io.R
 	if err != nil {
 		return nil, "", fmt.Errorf("get plugin: %w", err)
 	}
-	if p == nil {
+	if !isPublicPlugin(p) {
 		return nil, "", fmt.Errorf("%w: plugin %s", ErrNotFound, ref)
 	}
 
@@ -462,6 +486,10 @@ func (s *PluginService) Download(ctx context.Context, ref, version string) (io.R
 	return reader, etag, nil
 }
 
+func isPublicPlugin(p *model.PluginWithOwner) bool {
+	return p != nil && p.Visibility == "public" && p.ModerationStatus == "approved"
+}
+
 // ParseMultipartPublish extracts a PluginPublishInput from a multipart form.
 func (s *PluginService) ParseMultipartPublish(form *multipart.Form) (*PluginPublishInput, error) {
 	input := &PluginPublishInput{}
@@ -485,54 +513,20 @@ func (s *PluginService) ParseMultipartPublish(form *multipart.Form) (*PluginPubl
 		input.Tags = strings.Split(tags, ",")
 	}
 
-	files, err := ReadMultipartFiles(form)
+	files, err := readMultipartFiles(form, 64<<20)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	var totalSize int64
+	for _, data := range files {
+		totalSize += int64(len(data))
+		if totalSize > 512<<20 {
+			return nil, fmt.Errorf("%w: plugin package exceeds max size (%d bytes)", ErrValidation, 512<<20)
+		}
 	}
 	input.Files = files
 
 	return input, nil
-}
-
-func validatePluginManifest(data []byte, files map[string][]byte) error {
-	var manifest struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-		Skills  struct {
-			Path    string   `json:"path"`
-			Entries []string `json:"entries"`
-		} `json:"skills"`
-		MCPServers map[string]struct {
-			Type    string `json:"type"`
-			Command string `json:"command"`
-		} `json:"mcp_servers"`
-	}
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return fmt.Errorf("invalid plugin.json: %v", err)
-	}
-	if manifest.Name == "" {
-		return fmt.Errorf("plugin.json: name is required")
-	}
-	if manifest.Version == "" {
-		return fmt.Errorf("plugin.json: version is required")
-	}
-
-	// Verify skill entries exist
-	skillBase := "skills"
-	if manifest.Skills.Path != "" {
-		skillBase = strings.TrimSuffix(manifest.Skills.Path, "/")
-	}
-	for _, entry := range manifest.Skills.Entries {
-		skillPath := skillBase + "/" + entry + "/SKILL.md"
-		if _, ok := files[skillPath]; !ok {
-			// Also try with ./ prefix
-			if _, ok := files["./"+skillPath]; !ok {
-				return fmt.Errorf("skill entry %q references missing %s", entry, skillPath)
-			}
-		}
-	}
-
-	return nil
 }
 
 type fileManifestEntry struct {

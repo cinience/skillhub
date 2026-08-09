@@ -103,27 +103,29 @@ Skills are installed to `~/.skillhub/skills/` by default. Customize via `skills_
 
 ## Plugins
 
-Plugins are bundles that package multiple skills, MCP servers, and hooks into a single deployable unit. SkillHub serves as the plugin registry — publish once, load anywhere.
+Plugins follow [Agent Plugins Specification 1.0.0](https://github.com/agentplugins/agent-plugins-spec) and package Agent Skills plus MCP servers into a directory. SkillHub publishes and distributes immutable plugin versions.
 
 ### Plugin Manifest (`plugin.json`)
 
 ```json
 {
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "my-plugin",
   "version": "1.0.0",
-  "description": "A productivity plugin bundle",
-  "skills": ["skills/"],
-  "mcp_servers": {
+	"description": "A productivity plugin bundle"
+}
+```
+
+Components use fixed locations: Skills under `skills/<name>/SKILL.md` and MCP servers in root `mcp.json`:
+
+```json
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+	"mcpServers": {
     "code-tools": {
-      "type": "sse",
-      "url": "http://localhost:9090/sse",
-      "timeout_seconds": 30
+			"type": "streamable-http",
+			"url": "https://tools.example.com/mcp"
     }
-  },
-  "hooks": {
-    "pre_tool_use": [
-      {"matcher": "bash", "hooks": [{"command": "echo pre-check"}]}
-    ]
   }
 }
 ```
@@ -136,10 +138,8 @@ skillhub plugin publish ./my-plugin \
   --summary "Productivity tools bundle"
 ```
 
-Codex-style plugin directories with `.codex-plugin/plugin.json` are accepted by
-the CLI; it uploads that manifest as the registry's root `plugin.json` while
-preserving the original files. Install downloaded plugins into `~/plugins` by
-default, or set `plugins_dir` in `~/.skillhub/config.yaml`.
+The CLI accepts Agent Plugins directories rooted at `plugin.json`. Install downloaded
+plugins into `~/plugins` by default, or set `plugins_dir` in `~/.skillhub/config.yaml`.
 
 ```bash
 skillhub plugin list

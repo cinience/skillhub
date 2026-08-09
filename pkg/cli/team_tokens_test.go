@@ -40,7 +40,7 @@ func TestCLI_Plugins_Lifecycle(t *testing.T) {
 	c := cli.NewClient(&cli.CLIConfig{Registry: srv.URL, Token: "alice-token"})
 
 	files := map[string][]byte{
-		"plugin.json": []byte(`{"name":"demo-plugin","version":"1.0.0"}`),
+		"plugin.json": []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"demo-plugin","version":"1.0.0"}`),
 		"README.md":   []byte("# demo plugin"),
 	}
 	created, err := c.PublishPlugin("demo-plugin", "1.0.0", "summary", "codex,test", "initial", "general", "acme", files)

@@ -1937,6 +1937,18 @@ components:
         versionsCount:    { type: integer }
         ownerHandle:      { type: string }
         latestVersionId:  { type: string, format: uuid, nullable: true }
+        version:          { type: string, description: "Resolved immutable latest version" }
+        fingerprint:      { type: string, description: "Resolved version package SHA-256" }
+        sha256Hash:       { type: string, description: "Resolved version package SHA-256" }
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, size, sha256]
+            properties:
+              path:   { type: string }
+              size:   { type: integer, format: int64 }
+              sha256: { type: string }
         moderationStatus: { type: string }
         createdAt:        { type: string, format: date-time }
         updatedAt:        { type: string, format: date-time }

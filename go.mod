@@ -116,7 +116,7 @@ require (
 	github.com/quic-go/quic-go v0.60.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.15.0 // indirect
-	github.com/saker-ai/saker-common v0.1.1
+	github.com/saker-ai/saker-common v0.1.2
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect

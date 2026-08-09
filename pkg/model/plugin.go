@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Plugin represents a plugin package — a bundle of skills, MCP servers, and hooks.
+// Plugin represents an Agent Plugins package containing skills and MCP servers.
 type Plugin struct {
 	ID               uuid.UUID   `gorm:"column:id;type:text;primaryKey" json:"id"`
 	Slug             string      `gorm:"column:slug;type:varchar(128);not null" json:"slug"`
@@ -48,6 +48,7 @@ type PluginVersion struct {
 	Changelog     *string    `gorm:"column:changelog;type:text" json:"changelog,omitempty"`
 	CreatedBy     uuid.UUID  `gorm:"column:created_by;type:text;not null" json:"createdBy"`
 	SHA256Hash    string     `gorm:"column:sha256_hash;type:varchar(128);not null;index" json:"sha256Hash"`
+	Status        string     `gorm:"column:status;type:varchar(20);not null;default:'ready';index" json:"-"`
 	CreatedAt     time.Time  `gorm:"column:created_at;autoCreateTime;index:idx_pluginver_created,priority:2,sort:desc" json:"createdAt"`
 	SoftDeletedAt *time.Time `gorm:"column:soft_deleted_at" json:"softDeletedAt,omitempty"`
 	YankedAt      *time.Time `gorm:"column:yanked_at" json:"yankedAt,omitempty"`

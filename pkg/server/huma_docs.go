@@ -62,14 +62,16 @@ type docDownloadInput struct {
 }
 
 type docPluginFileInput struct {
-	Ref     string `query:"ref" doc:"Plugin ref, optionally @namespace/slug" required:"true"`
-	Version string `query:"version" doc:"Version, defaults to latest" required:"false"`
-	Path    string `query:"path" doc:"File path" required:"true"`
+	Slug      string `query:"slug" doc:"Plugin slug" required:"true"`
+	Namespace string `query:"namespace" doc:"Optional namespace slug" required:"false"`
+	Version   string `query:"version" doc:"Version, defaults to latest" required:"false"`
+	Path      string `query:"path" doc:"File path" required:"true"`
 }
 
 type docPluginDownloadInput struct {
-	Ref     string `query:"ref" doc:"Plugin ref, optionally @namespace/slug" required:"true"`
-	Version string `query:"version" doc:"Version, defaults to latest" required:"false"`
+	Slug      string `query:"slug" doc:"Plugin slug" required:"true"`
+	Namespace string `query:"namespace" doc:"Optional namespace slug" required:"false"`
+	Version   string `query:"version" doc:"Version, defaults to latest" required:"false"`
 }
 
 type docSkillPublishInput struct {

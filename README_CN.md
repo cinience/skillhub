@@ -103,27 +103,29 @@ skillhub admin set-password --user alice --password newpass
 
 ## 插件 (Plugins)
 
-Plugin 将多个 skill、MCP server 和 hook 打包为单一可部署单元。SkillHub 同时作为插件注册中心 — 一次发布，随处加载。
+Plugin 按 [Agent Plugins Specification 1.0.0](https://github.com/agentplugins/agent-plugins-spec) 将 Agent Skills 与 MCP servers 打包为单一可部署目录。SkillHub 负责不可变版本发布和分发。
 
 ### 插件清单 (`plugin.json`)
 
 ```json
 {
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "my-plugin",
   "version": "1.0.0",
-  "description": "生产力工具插件包",
-  "skills": ["skills/"],
-  "mcp_servers": {
+	"description": "生产力工具插件包"
+}
+```
+
+组件使用固定位置：Skills 位于 `skills/<name>/SKILL.md`，MCP servers 位于根目录 `mcp.json`：
+
+```json
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+	"mcpServers": {
     "code-tools": {
-      "type": "sse",
-      "url": "http://localhost:9090/sse",
-      "timeout_seconds": 30
+			"type": "streamable-http",
+			"url": "https://tools.example.com/mcp"
     }
-  },
-  "hooks": {
-    "pre_tool_use": [
-      {"matcher": "bash", "hooks": [{"command": "echo pre-check"}]}
-    ]
   }
 }
 ```

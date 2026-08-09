@@ -77,31 +77,38 @@ func computeContentFingerprint(files map[string][]byte) string {
 
 // ReadMultipartFiles reads all files from a multipart form.
 func ReadMultipartFiles(form *multipart.Form) (map[string][]byte, error) {
+	return readMultipartFiles(form, maxFileSize)
+}
+
+func readMultipartFiles(form *multipart.Form, fileSizeLimit int64) (map[string][]byte, error) {
 	files := make(map[string][]byte)
 	for _, headers := range form.File {
 		for _, header := range headers {
 			if len(files) >= maxUploadFiles {
 				return nil, fmt.Errorf("too many files (max %d)", maxUploadFiles)
 			}
-			if header.Size > maxFileSize {
-				return nil, fmt.Errorf("file %s exceeds max size (%d bytes)", header.Filename, maxFileSize)
+			if header.Size > fileSizeLimit {
+				return nil, fmt.Errorf("file %s exceeds max size (%d bytes)", header.Filename, fileSizeLimit)
 			}
 			name := multipartFileName(header)
 			name = sanitizeFilePath(name)
 			if name == "" {
-				continue
+				return nil, fmt.Errorf("invalid file path %q", header.Filename)
+			}
+			if _, exists := files[name]; exists {
+				return nil, fmt.Errorf("duplicate file path %q", name)
 			}
 			f, err := header.Open()
 			if err != nil {
 				return nil, fmt.Errorf("open file %s: %w", name, err)
 			}
-			data, err := io.ReadAll(io.LimitReader(f, maxFileSize+1))
+			data, err := io.ReadAll(io.LimitReader(f, fileSizeLimit+1))
 			_ = f.Close()
 			if err != nil {
 				return nil, fmt.Errorf("read file %s: %w", name, err)
 			}
-			if int64(len(data)) > maxFileSize {
-				return nil, fmt.Errorf("file %s exceeds max size (%d bytes)", name, maxFileSize)
+			if int64(len(data)) > fileSizeLimit {
+				return nil, fmt.Errorf("file %s exceeds max size (%d bytes)", name, fileSizeLimit)
 			}
 			files[name] = data
 		}

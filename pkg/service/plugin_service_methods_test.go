@@ -88,7 +88,7 @@ func setupPluginFixtures(t *testing.T) *pluginFixtures {
 }
 
 func validPluginJSON(name string) []byte {
-	return []byte(`{"name":"` + name + `","version":"1.0.0"}`)
+	return []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"` + name + `"}`)
 }
 
 func validPluginFiles(name string) map[string][]byte {
@@ -175,7 +175,7 @@ func TestPluginService_Publish(t *testing.T) {
 					Slug:    "no-name",
 					Version: "1.0.0",
 					Files: map[string][]byte{
-						"plugin.json": []byte(`{"version":"1.0.0"}`),
+						"plugin.json": []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","version":"1.0.0"}`),
 					},
 					OwnerID: fx.owner.ID,
 				}
@@ -183,18 +183,17 @@ func TestPluginService_Publish(t *testing.T) {
 			wantErr: "name is required",
 		},
 		{
-			name: "reject: plugin.json missing version",
+			name: "happy: plugin.json version is optional",
 			input: func(fx *pluginFixtures) PluginPublishInput {
 				return PluginPublishInput{
 					Slug:    "no-ver",
 					Version: "1.0.0",
 					Files: map[string][]byte{
-						"plugin.json": []byte(`{"name":"test"}`),
+						"plugin.json": validPluginJSON("test"),
 					},
 					OwnerID: fx.owner.ID,
 				}
 			},
-			wantErr: "version is required",
 		},
 		{
 			name: "reject: duplicate version",
@@ -206,7 +205,7 @@ func TestPluginService_Publish(t *testing.T) {
 					Slug:    "dup",
 					Version: "1.0.0",
 					Files: map[string][]byte{
-						"plugin.json": []byte(`{"name":"dup","version":"1.0.0"}`),
+						"plugin.json": validPluginJSON("dup"),
 						"README.md":   []byte("# dup v2 content"),
 					},
 					OwnerID: fx.owner.ID,
@@ -224,7 +223,7 @@ func TestPluginService_Publish(t *testing.T) {
 					Slug:    "older",
 					Version: "0.5.0",
 					Files: map[string][]byte{
-						"plugin.json": []byte(`{"name":"older","version":"0.5.0"}`),
+						"plugin.json": []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"older","version":"0.5.0"}`),
 						"README.md":   []byte("# older downgrade content"),
 					},
 					OwnerID: fx.owner.ID,
@@ -254,7 +253,7 @@ func TestPluginService_Publish(t *testing.T) {
 					Slug:    "with-skills",
 					Version: "1.0.0",
 					Files: map[string][]byte{
-						"plugin.json":           []byte(`{"name":"with-skills","version":"1.0.0","skills":{"entries":["greet"]}}`),
+						"plugin.json":           validPluginJSON("with-skills"),
 						"skills/greet/SKILL.md": []byte("# greet"),
 					},
 					OwnerID: fx.owner.ID,
@@ -619,6 +618,32 @@ func TestPluginService_GetFile(t *testing.T) {
 	})
 }
 
+func TestPluginService_PublicReadsRejectPrivateAndYanked(t *testing.T) {
+	fx := setupPluginFixtures(t)
+	result := fx.publishBasePlugin(t, "guarded", fx.owner)
+	result.Plugin.Visibility = "private"
+	if err := fx.pluginRepo.Update(context.Background(), &result.Plugin); err != nil {
+		t.Fatalf("make private: %v", err)
+	}
+	if _, err := fx.svc.Get(context.Background(), "guarded"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("private detail: want ErrNotFound, got %v", err)
+	}
+	if _, err := fx.svc.GetFile(context.Background(), "guarded", "1.0.0", "plugin.json"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("private file: want ErrNotFound, got %v", err)
+	}
+
+	result.Plugin.Visibility = "public"
+	if err := fx.pluginRepo.Update(context.Background(), &result.Plugin); err != nil {
+		t.Fatalf("make public: %v", err)
+	}
+	if err := fx.svc.YankVersion(context.Background(), fx.owner, "guarded", "1.0.0", "unsafe"); err != nil {
+		t.Fatalf("yank: %v", err)
+	}
+	if _, err := fx.svc.GetFile(context.Background(), "guarded", "1.0.0", "plugin.json"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("yanked file: want ErrNotFound, got %v", err)
+	}
+}
+
 func TestPluginService_NamespaceQualifiedRefsAreIsolated(t *testing.T) {
 	t.Parallel()
 	fx := setupPluginFixtures(t)
@@ -736,7 +761,7 @@ func TestPluginService_Versions(t *testing.T) {
 		Slug:    "versioned",
 		Version: "2.0.0",
 		Files: map[string][]byte{
-			"plugin.json": []byte(`{"name":"versioned","version":"2.0.0"}`),
+			"plugin.json": []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"versioned","version":"2.0.0"}`),
 			"README.md":   []byte("# versioned v2"),
 		},
 		OwnerID: fx.owner.ID,
